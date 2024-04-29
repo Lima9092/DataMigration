@@ -1,0 +1,106 @@
+' ======================================================================================
+' Macro Name: ProcessFolderStructureCSV
+' Author: Lee Jolley
+' Date: 29/04/2024
+' Description:
+' This macro processes permissions listed in column E of the FolderStructure.CSV file, splits them
+' into individual columns, and highlights differences from parent permissions based on a
+' hierarchical structure defined in column A.
+'
+' Instructions for Use:
+' 1. Open the Excel workbook containing the data you wish to process. Ensure your workbook
+'    is in a macro-enabled format (.xlsm) to proceed. If not, click 'File' -> 'Save As', choose
+'    'Excel Macro-Enabled Workbook (*.xlsm)' from the 'Save as type' dropdown, and then click 'Save'.
+' 2. Press Alt + F11 to open the VBA Editor.
+' 3. In the Project Explorer, find the workbook you're working with, then right-click
+'    and choose 'Insert' -> 'Module' to create a new module.
+' 4. Copy and paste this macro into the newly created module.
+' 5. Close the VBA Editor and return to your Excel workbook.
+' 6. Press Alt + F8, select 'SplitAndHighlightPermissions' from the list, and then click 'Run'.
+' 7. The macro will process the permissions, split them into new columns starting from column F,
+'    highlight any differences, and mark the "ACL Changed" column as "Yes" for any changes.
+' 8. Review the changes, and if all modifications are correct, save your workbook to preserve these changes.
+'
+' Use Rights Policy:
+' This macro is provided under an open use policy by Lee Jolley. You are free to use, modify, 
+' and distribute this macro in your own projects, whether personal, commercial, or 
+' educational, under the following conditions:
+' 1. This policy text and credit to the original author (Lee Jolley) must be retained in any 
+'    versions or derivatives of the macro.
+' 2. Any improvements or modifications to this macro should ideally be shared back 
+'    with the community or made publicly available, although this is encouraged but not mandatory.
+' 3. This macro is provided "as is," without warranty of any kind, express or implied. 
+'    In no event shall the author be liable for any claim, damages, or other liability 
+'    arising from its use.
+'
+' ======================================================================================
+
+Sub ProcessFolderStructureCSV()
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    
+    Dim lastRow As Long
+    lastRow = ws.Cells(ws.Rows.Count, "E").End(xlUp).Row
+    
+    Dim i As Long, j As Long
+    Dim permissions As Variant
+    Dim maxColumns As Long
+    maxColumns = 0
+
+    For i = 2 To lastRow
+        permissions = Split(Trim(ws.Cells(i, "E").Value), "|")
+        If UBound(permissions) + 1 > maxColumns Then
+            maxColumns = UBound(permissions) + 1
+        End If
+    Next i
+    
+    For i = 1 To 5 + maxColumns
+        With ws.Cells(1, i)
+            If i > 5 Then
+                .Value = "Permission " & (i - 5)
+            End If
+            .Interior.Color = RGB(79, 129, 189)
+            .Font.Color = RGB(255, 255, 255)
+            .Font.Bold = True
+        End With
+    Next i
+    
+    For i = 2 To lastRow
+        permissions = Split(Trim(ws.Cells(i, "E").Value), "|")
+        For j = 0 To UBound(permissions)
+            ws.Cells(i, 6 + j).Value = Trim(permissions(j))
+        Next j
+    Next i
+    
+    ws.Columns("E").Delete
+    
+    Dim permissionsStartColumn As Integer
+    permissionsStartColumn = 5
+    Dim lastPermissionsColumn As Integer
+    lastPermissionsColumn = 4 + maxColumns
+    
+    Dim currentDepth As Integer
+    Dim parentRow As Integer
+    Dim parentDepth As Integer
+
+    For i = 2 To lastRow
+        currentDepth = Len(ws.Cells(i, 1).Value) - Len(Replace(ws.Cells(i, 1).Value, "\", ""))
+        
+        For parentRow = i - 1 To 1 Step -1
+            parentDepth = Len(ws.Cells(parentRow, 1).Value) - Len(Replace(ws.Cells(parentRow, 1).Value, "\", ""))
+            If parentDepth < currentDepth Then
+                For j = permissionsStartColumn To lastPermissionsColumn
+                    If StrComp(ws.Cells(i, j).Value, ws.Cells(parentRow, j).Value, vbBinaryCompare) <> 0 Then
+                        ws.Cells(i, j).Interior.Color = RGB(255, 255, 0)
+                        Exit For
+                    End If
+                Next j
+                Exit For
+            End If
+        Next parentRow
+    Next i
+
+    ws.Columns.AutoFit
+
+    MsgBox "FolderStructure.CSV file processed and differences highlighted.", vbInformation
+End Sub

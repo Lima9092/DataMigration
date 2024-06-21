@@ -308,4 +308,4 @@ function Calculate-TotalStats {
 }
 
 # Call the export function
-Export-Dataport
+Export-Data

@@ -16,6 +16,8 @@ The script allows specifying a folder path and the desired depth of recursion ei
   A switch to recurse through all folders regardless of depth.
 -NoStats
   A switch to skip file count and size statistics, listing only folder names.
+-IncludeExtensionSummary
+  A switch to include a summary of file extensions in a separate CSV file.
 
 .EXAMPLE
 PS> .\GetFolderInfo.ps1
@@ -30,7 +32,7 @@ PS> .\GetFolderInfo.ps1 -FolderPath "C:\Your\Directory" -NoStats
   This command runs the script for the specified folder path and lists only the folder names up to the default recursion depth without calculating file counts and sizes.
 
 .NOTES
-The script outputs a CSV file in the same location as the specified folder path. The file is named 'FolderStructure.csv'.
+The script outputs a CSV file in the same location as the specified folder path. The file is named 'FolderStructure.csv'. If the -IncludeExtensionSummary switch is used, a separate CSV file named 'FolderStructure.extensions.csv' is also created.
 
 .AUTHOR
 Lee Jolley, UK
@@ -52,16 +54,18 @@ educational, under the following conditions:
 #>
 
 param(
-    [string]$FolderPath,          # Path to the directory to analyze
-    [switch]$IncludeHiddenSystem, # Switch to include hidden and system files
-    [int]$RecurseDepth = 3,       # Depth of recursion
-    [switch]$RecurseAll,          # Switch to recurse all folders regardless of depth
-    [switch]$NoStats              # Switch to skip file count and size stats
+    [string]$FolderPath,                  # Path to the directory to analyze
+    [switch]$IncludeHiddenSystem,         # Switch to include hidden and system files
+    [int]$RecurseDepth = 3,               # Depth of recursion
+    [switch]$RecurseAll,                  # Switch to recurse all folders regardless of depth
+    [switch]$NoStats,                     # Switch to skip file count and size stats
+    [switch]$IncludeExtensionSummary      # Switch to include file extension summary
 )
 
 $global:TotalFolderSizeMB = 0
 $global:TotalFileCount = 0
 $global:Results = @()
+$global:ExtensionSummary = @{}
 
 function Get-FolderInfo {
     param(
@@ -106,6 +110,17 @@ function Get-FolderInfo {
         $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
         $global:TotalFolderSizeMB += $totalSizeMB
         $global:TotalFileCount += $fileCount
+
+        if ($IncludeExtensionSummary) {
+            foreach ($file in $files) {
+                $ext = $file.Extension.ToLower()
+                if ($global:ExtensionSummary.ContainsKey($ext)) {
+                    $global:ExtensionSummary[$ext] += 1
+                } else {
+                    $global:ExtensionSummary[$ext] = 1
+                }
+            }
+        }
     }
 
     $permissions = ""
@@ -169,6 +184,17 @@ function Get-AllFolderInfo {
         $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
         $global:TotalFolderSizeMB += $totalSizeMB
         $global:TotalFileCount += $fileCount
+
+        if ($IncludeExtensionSummary) {
+            foreach ($item in $items) {
+                $ext = $item.Extension.ToLower()
+                if ($global:ExtensionSummary.ContainsKey($ext)) {
+                    $global:ExtensionSummary[$ext] += 1
+                } else {
+                    $global:ExtensionSummary[$ext] = 1
+                }
+            }
+        }
     }
 }
 
@@ -182,12 +208,15 @@ if (-not $PSBoundParameters.ContainsKey('IncludeHiddenSystem')) {
     $IncludeHiddenSystem = $includeHiddenResponse -eq 'yes'
 }
 
-# Determine the CSV output path
-if ($PSScriptRoot) {
-    $csvOutputPath = Join-Path $PSScriptRoot "FolderStructure.csv"
-} else {
-    $csvOutputPath = Join-Path (Get-Location) "FolderStructure.csv"
-}
+# Get the current timestamp without seconds
+$timestamp = (Get-Date).ToString("yyyy-MM-dd_HH-mm")
+
+# Sanitize the folder path for use in file names
+$sanitizedFolderPath = ($FolderPath -replace '[\\/:*?"<>|]', '_').TrimEnd('_')
+
+# Determine the CSV output paths
+$csvOutputPath = Join-Path (Get-Location) "${sanitizedFolderPath}_FolderStructure_${timestamp}.csv"
+$extensionSummaryPath = Join-Path (Get-Location) "${sanitizedFolderPath}_ExtensionSummary_${timestamp}.csv"
 
 function Export-Data {
     try {
@@ -213,6 +242,16 @@ function Export-Data {
             Get-FolderInfo -Path $FolderPath -Depth $RecurseDepth -IncludeHidden $IncludeHiddenSystem -CalculateStats $false
 
             $global:Results | Export-Csv -Path $csvOutputPath -NoTypeInformation -ErrorAction Stop
+        }
+
+        if ($IncludeExtensionSummary) {
+            $global:ExtensionSummary.GetEnumerator() | ForEach-Object {
+                [PSCustomObject]@{
+                    Extension = $_.Key
+                    Count     = $_.Value
+                }
+            } | Export-Csv -Path $extensionSummaryPath -NoTypeInformation -ErrorAction Stop
+            Write-Host "Extension summary CSV file has been created at $extensionSummaryPath"
         }
 
         Write-Host "CSV file has been created at $csvOutputPath"
@@ -254,8 +293,19 @@ function Calculate-TotalStats {
         $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
         $global:TotalFolderSizeMB += $totalSizeMB
         $global:TotalFileCount += $fileCount
+
+        if ($IncludeExtensionSummary) {
+            foreach ($item in $items) {
+                $ext = $item.Extension.ToLower()
+                if ($global:ExtensionSummary.ContainsKey($ext)) {
+                    $global:ExtensionSummary[$ext] += 1
+                } else {
+                    $global:ExtensionSummary[$ext] = 1
+                }
+            }
+        }
     }
 }
 
 # Call the export function
-Export-Data
+Export-Dataport-Data

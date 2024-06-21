@@ -12,6 +12,10 @@ The script allows specifying a folder path and the desired depth of recursion ei
   The number of folder levels to recurse through. Default is 3 if not specified.
 -IncludeHiddenSystem
   A switch to include hidden and system files in the analysis. If not specified, these files will be excluded.
+-RecurseAll
+  A switch to recurse through all folders regardless of depth.
+-NoStats
+  A switch to skip file count and size statistics, listing only folder names.
 
 .EXAMPLE
 PS> .\GetFolderInfo.ps1
@@ -21,6 +25,10 @@ PS> .\GetFolderInfo.ps1
 PS> .\GetFolderInfo.ps1 -FolderPath "C:\Your\Directory" -RecurseDepth 5 -IncludeHiddenSystem
   This command runs the script for the specified folder path and recursion depth, including hidden and system files in the analysis.
 
+.EXAMPLE
+PS> .\GetFolderInfo.ps1 -FolderPath "C:\Your\Directory" -NoStats
+  This command runs the script for the specified folder path and lists only the folder names up to the default recursion depth without calculating file counts and sizes.
+
 .NOTES
 The script outputs a CSV file in the same location as the specified folder path. The file is named 'FolderStructure.csv'.
 
@@ -28,7 +36,7 @@ The script outputs a CSV file in the same location as the specified folder path.
 Lee Jolley, UK
 
 .DATE
-29/04/2024
+21/06/2024
 
 .USE RIGHTS POLICY
 This script is provided under an open use policy by Lee Jolley. You are free to use, modify, 
@@ -45,16 +53,22 @@ educational, under the following conditions:
 
 param(
     [string]$FolderPath,          # Path to the directory to analyze
-    [switch]$IncludeHiddenSystem  # Switch to include hidden and system files
+    [switch]$IncludeHiddenSystem, # Switch to include hidden and system files
+    [int]$RecurseDepth = 3,       # Depth of recursion
+    [switch]$RecurseAll,          # Switch to recurse all folders regardless of depth
+    [switch]$NoStats              # Switch to skip file count and size stats
 )
 
 $global:TotalFolderSizeMB = 0
+$global:TotalFileCount = 0
+$global:Results = @()
 
 function Get-FolderInfo {
     param(
         [string]$Path,
         [int]$Depth,
-        [bool]$IncludeHidden
+        [bool]$IncludeHidden,
+        [bool]$CalculateStats
     )
 
     if ($Depth -le 0) {
@@ -64,8 +78,9 @@ function Get-FolderInfo {
     $getChildrenParams = @{
         Path = $Path
         Force = $IncludeHidden
-        ErrorAction = 'Stop'
+        ErrorAction = 'SilentlyContinue'
     }
+
     $items = $null
     $errors = @()
     try {
@@ -74,16 +89,28 @@ function Get-FolderInfo {
         $errors += $_.Exception.Message
     }
 
+    if ($items -eq $null) {
+        return
+    }
+
     $directories = $items | Where-Object { $_.PSIsContainer }
     $files = $items | Where-Object { -not $_.PSIsContainer }
 
-    $totalSizeBytes = ($files | Measure-Object -Property Length -Sum).Sum
-    $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
-    $global:TotalFolderSizeMB += $totalSizeMB
+    $totalSizeBytes = 0
+    $fileCount = 0
+    $totalSizeMB = 0
+
+    if ($CalculateStats -and $files) {
+        $totalSizeBytes = ($files | Measure-Object -Property Length -Sum).Sum
+        $fileCount = $files.Count
+        $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
+        $global:TotalFolderSizeMB += $totalSizeMB
+        $global:TotalFileCount += $fileCount
+    }
 
     $permissions = ""
     try {
-        $acl = Get-Acl -Path $Path
+        $acl = Get-Acl -Path $Path -ErrorAction SilentlyContinue
         $permissionsArray = $acl.Access | ForEach-Object {
             "$($_.IdentityReference.Value):$($_.FileSystemRights);$($_.AccessControlType)"
         }
@@ -93,16 +120,55 @@ function Get-FolderInfo {
 
     $info = [PSCustomObject]@{
         Path          = $Path
-        FileCount     = $files.Count
+        FileCount     = $fileCount
         FolderSizeMB  = $totalSizeMB
         Errors        = ($errors -join '; ')
         Permissions   = ($permissionsArray -join '| ')
     }
 
-    $info
+    $global:Results += $info
 
     foreach ($dir in $directories) {
-        Get-FolderInfo -Path $dir.FullName -Depth ($Depth - 1) -IncludeHidden $IncludeHidden
+        Get-FolderInfo -Path $dir.FullName -Depth ($Depth - 1) -IncludeHidden $IncludeHidden -CalculateStats $CalculateStats
+    }
+}
+
+function Get-AllFolderInfo {
+    param(
+        [string]$Path,
+        [bool]$IncludeHidden
+    )
+
+    $getChildrenParams = @{
+        Path = $Path
+        Force = $IncludeHidden
+        Recurse = $true
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    $items = $null
+    $errors = @()
+    try {
+        $items = Get-ChildItem @getChildrenParams
+    } catch {
+        $errors += $_.Exception.Message
+    }
+
+    if ($items -eq $null) {
+        return
+    }
+
+    $files = $items | Where-Object { -not $_.PSIsContainer }
+
+    $totalSizeBytes = 0
+    $fileCount = 0
+
+    if ($files) {
+        $totalSizeBytes = ($files | Measure-Object -Property Length -Sum).Sum
+        $fileCount = $files.Count
+        $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
+        $global:TotalFolderSizeMB += $totalSizeMB
+        $global:TotalFileCount += $fileCount
     }
 }
 
@@ -116,26 +182,38 @@ if (-not $PSBoundParameters.ContainsKey('IncludeHiddenSystem')) {
     $IncludeHiddenSystem = $includeHiddenResponse -eq 'yes'
 }
 
-$RecurseDepth = Read-Host "Please enter the number of folder levels to recurse through (default is 3)"
-if ([string]::IsNullOrWhiteSpace($RecurseDepth)) {
-    $RecurseDepth = 3
+# Determine the CSV output path
+if ($PSScriptRoot) {
+    $csvOutputPath = Join-Path $PSScriptRoot "FolderStructure.csv"
+} else {
+    $csvOutputPath = Join-Path (Get-Location) "FolderStructure.csv"
 }
-
-$csvOutputPath = Join-Path $PSScriptRoot "FolderStructure.csv"
 
 function Export-Data {
     try {
-        $results = Get-FolderInfo -Path $FolderPath -Depth $RecurseDepth -IncludeHidden $IncludeHiddenSystem
-        $results | Export-Csv -Path $csvOutputPath -NoTypeInformation -ErrorAction Stop
+        if (-not $NoStats) {
+            # Always calculate total stats by recursing all folders
+            Calculate-TotalStats -Path $FolderPath -IncludeHidden $IncludeHiddenSystem
 
-        $totalInfo = [PSCustomObject]@{
-            Path          = "Total"
-            FileCount     = ""
-            FolderSizeMB  = $global:TotalFolderSizeMB
-            Errors        = ""
-            Permissions   = ""
+            # Capture detailed info up to the specified depth
+            Get-FolderInfo -Path $FolderPath -Depth $RecurseDepth -IncludeHidden $IncludeHiddenSystem -CalculateStats $true
+
+            $global:Results | Export-Csv -Path $csvOutputPath -NoTypeInformation -ErrorAction Stop
+
+            $totalInfo = [PSCustomObject]@{
+                Path          = "Total"
+                FileCount     = $global:TotalFileCount
+                FolderSizeMB  = $global:TotalFolderSizeMB
+                Errors        = ""
+                Permissions   = ""
+            }
+            $totalInfo | Export-Csv -Path $csvOutputPath -NoTypeInformation -Append -ErrorAction Stop
+        } else {
+            # Only capture folder names up to the specified depth
+            Get-FolderInfo -Path $FolderPath -Depth $RecurseDepth -IncludeHidden $IncludeHiddenSystem -CalculateStats $false
+
+            $global:Results | Export-Csv -Path $csvOutputPath -NoTypeInformation -ErrorAction Stop
         }
-        $totalInfo | Export-Csv -Path $csvOutputPath -NoTypeInformation -Append -ErrorAction Stop
 
         Write-Host "CSV file has been created at $csvOutputPath"
     } catch {
@@ -150,6 +228,34 @@ function Export-Data {
     }
 }
 
+function Calculate-TotalStats {
+    param(
+        [string]$Path,
+        [bool]$IncludeHidden
+    )
+
+    $getChildrenParams = @{
+        Path = $Path
+        Force = $IncludeHidden
+        Recurse = $true
+        ErrorAction = 'SilentlyContinue'
+    }
+
+    $items = $null
+    try {
+        $items = Get-ChildItem @getChildrenParams -File
+    } catch {
+        return
+    }
+
+    if ($items) {
+        $totalSizeBytes = ($items | Measure-Object -Property Length -Sum).Sum
+        $fileCount = $items.Count
+        $totalSizeMB = [math]::Round($totalSizeBytes / 1MB, 2)
+        $global:TotalFolderSizeMB += $totalSizeMB
+        $global:TotalFileCount += $fileCount
+    }
+}
+
 # Call the export function
 Export-Data
-

@@ -1,3 +1,40 @@
+<#
+.SYNOPSIS
+This script recursively creates folders and subfolders, generates dummy files in each folder, and sets NTFS permissions at a specified level.
+
+.DESCRIPTION
+The script prompts the user for input parameters to define the number of root folders, recursion levels, subfolders per level, the level at which to change permissions, and the user account for permission changes. It then creates the folder structure, generates dummy files in each folder, and sets NTFS permissions for the specified user account at the specified recursion level.
+
+.EXAMPLE
+PS> .\CreateFoldersAndSetPermissions.ps1
+  This command runs the script and prompts the user for input parameters to create the folder structure and set permissions.
+
+.NOTES
+The script performs the following actions:
+1. Prompts the user for the number of root folders, recursion levels, subfolders per level, the level at which to change permissions, and the user account for permission changes.
+2. Recursively creates folders and subfolders based on the input parameters.
+3. Creates a dummy file named "DummyFile.txt" in each folder with the content "This is a dummy file".
+4. Sets NTFS permissions for the specified user account at the specified recursion level.
+
+.AUTHOR
+Lee Jolley
+
+.DATE
+[Date]
+
+.USE RIGHTS POLICY
+This script is provided under an open use policy by [Your Name]. You are free to use, modify, 
+and distribute this script in your own projects, whether personal, commercial, or 
+educational, under the following conditions:
+1. This policy text and credit to the original author ([Your Name]) must be retained in any 
+   versions or derivatives of the script.
+2. Any improvements or modifications to this script should ideally be shared back 
+   with the community or made publicly available, although this is encouraged but not mandatory.
+3. This script is provided "as is," without warranty of any kind, express or implied. 
+   In no event shall the author be liable for any claim, damages, or other liability 
+   arising from its use.
+#>
+
 # Function to create folders and subfolders recursively
 function Create-Folders {
     param (

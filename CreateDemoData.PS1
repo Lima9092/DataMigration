@@ -20,7 +20,7 @@ The script performs the following actions:
 Lee Jolley
 
 .DATE
-[Date]
+31/05/2024
 
 .USE RIGHTS POLICY
 This script is provided under an open use policy by [Your Name]. You are free to use, modify, 

@@ -37,10 +37,10 @@ This script is provided under an open use policy. You are free to use, modify, a
 #>
 
 # Azcopy-Migration.PS1
-$source = "\\LEEJOLLEY7297\Source"
-$storageAccount = "labzrssauksouth"
-$container = "sitea"
-$sasToken = "sv=2023-01-03&spr=https%2Chttp&st=2024-07-02T14%3A57%3A54Z&se=2024-07-26T14%3A57%3A00Z&sr=c&sp=racwdxltf&sig=zcdv1oQTmadIH6FlIaVKmPh0NYhL9RYVzKqOpc0dPfs%3D"
+$source = "\\server\share"
+$storageAccount = "<StorageAccount>"
+$container = "<Container>"
+$sasToken = "<SASToken>"
 
 # Construct the destination URL
 $destination = "https://$storageAccount.blob.core.windows.net/$container`?$sasToken"

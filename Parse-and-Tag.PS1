@@ -33,8 +33,8 @@ This script is provided under an open use policy. You are free to use, modify, a
 #>
 
 # Parse-and-Tag.PS1
-$sasToken = "sv=2023-01-03&spr=https%2Chttp&st=2024-07-02T14%3A57%3A54Z&se=2024-07-26T14%3A57%3A00Z&sr=c&sp=racwdxltf&sig=zcdv1oQTmadIH6FlIaVKmPh0NYhL9RYVzKqOpc0dPfs%3D"
-$tagValue = "MegaNexusMigrated=No"
+$sasToken = "<SASToken>"
+$tagValue = "<TAG>=<Value>"
 
 # Get the list of custom log files
 $logDirectory = Get-Location

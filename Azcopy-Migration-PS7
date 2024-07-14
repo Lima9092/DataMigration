@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-This script synchronizes files from a specified source directory to an Azure Blob storage container using AzCopy.
+This script synchronizes files from a specified source directory to an Azure Blob storage container using AzCopy. This script runs copy jobs in parallel and requires PowerShell 7 to do so.
 
 .DESCRIPTION
 The script constructs the destination URL using the provided storage account, container, and SAS token. It sets up a custom log file and directory for AzCopy logs, then executes the AzCopy sync command in parallel for efficiency. The script checks the success of the operation and provides log file details for troubleshooting.
@@ -17,6 +17,9 @@ The name of the Azure Blob container. This parameter is required.
 
 -sasToken
 The SAS token providing access to the Azure Blob container. This parameter is required.
+
+-maxParallelJobs
+Sets the maximum number of jobs to be run in parallel
 
 .EXAMPLE
 PS> .\Azcopy-Migration-PS7.PS1

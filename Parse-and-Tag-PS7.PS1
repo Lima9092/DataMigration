@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-This script tags blobs in an Azure Blob storage container using AzCopy.
+This script tags blobs in an Azure Blob storage container using AzCopy. This script runs copy jobs in parallel and requires PowerShell 7 to do so.
 
 .DESCRIPTION
 The script constructs the container URL using the provided storage account, container name, and SAS token. It retrieves a list of all blobs in the container and processes each blob in parallel to set a specified tag. The script logs the start and end times, as well as the duration of the operation, and captures details of the blob tagging process.

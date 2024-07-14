@@ -6,11 +6,11 @@ This script processes Robocopy log files, summarizing key information such as st
 The script scans all .log files in the same directory, extracts details from each Robocopy log, and outputs a CSV file with the summarized information. This includes the name of the log file, start and end dates and times, duration, command used, total files and directories, total size in GB, number of skipped and failed items, copy speed in Mbps and GB/hour, and any error messages.
 
 .EXAMPLE
-PS> .\Robocopy-Summary.ps1
+PS> .\Log-Summary.ps1
   This command runs the script and processes all .log files in the current directory, outputting a CSV summary.
 
 .NOTES
-The script outputs a CSV file named 'RobocopySummary.csv' in the same location as the script.
+The script outputs a CSV file named 'LogSummary.csv' in the same location as the script.
 
 .AUTHOR
 Lee Jolley
@@ -32,7 +32,7 @@ educational, under the following conditions:
 #>
 
 # Define the output CSV file
-$outputCsv = "RobocopySummary.csv"
+$outputCsv = "LogSummary.csv"
 
 # Create an array to hold the summary objects
 $summaries = @()

@@ -22,7 +22,7 @@ The SAS token providing access to the Azure Blob container. This parameter is re
 Sets the maximum number of jobs to be run in parallel
 
 .EXAMPLE
-PS> .\Azcopy-Migration-PS7.PS1
+PS> .\PS7-Azcopy-Migration.PS1
 This command runs the script and synchronizes files from the source directory to the specified Azure Blob container, logging the details of the operation.
 
 .NOTES

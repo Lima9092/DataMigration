@@ -25,7 +25,7 @@ The maximum number of retries for setting the blob tag. Default is 3.
 The maximum number of parallel jobs for processing blobs. Default is 10.
 
 .EXAMPLE
-PS> .\BlobTaggingScript.PS1
+PS> .\PS7-Parse-and-Tag.PS1
 This command runs the script and tags blobs in the specified Azure Blob container, logging the details of the operation.
 
 .NOTES

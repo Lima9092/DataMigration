@@ -1,3 +1,61 @@
+<#
+.SYNOPSIS
+This script tags blobs in an Azure Blob storage container using AzCopy.
+
+.DESCRIPTION
+The script constructs the container URL using the provided storage account, container name, and SAS token. It retrieves a list of all blobs in the container and processes each blob in parallel to set a specified tag. The script logs the start and end times, as well as the duration of the operation, and captures details of the blob tagging process.
+
+.PARAMETERS
+-sasToken
+The SAS token providing access to the Azure Blob container. This parameter is required.
+
+-containerName
+The name of the Azure Blob container. This parameter is required.
+
+-storageAccountName
+The name of the Azure Storage account. This parameter is required.
+
+-tagValue
+The tag value to be set on each blob. This parameter is required.
+
+-maxRetries
+The maximum number of retries for setting the blob tag. Default is 3.
+
+-maxParallelJobs
+The maximum number of parallel jobs for processing blobs. Default is 10.
+
+.EXAMPLE
+PS> .\BlobTaggingScript.PS1
+This command runs the script and tags blobs in the specified Azure Blob container, logging the details of the operation.
+
+.NOTES
+Before running this script, ensure you have the necessary permissions to access the Azure Blob storage container and that AzCopy is installed and available in your PATH.
+
+This script requires PowerShell 7 or later.
+
+.AUTHOR
+Lee Jolley
+
+.DATE
+14/07/2024
+
+.USE RIGHTS POLICY
+This script is provided under an open use policy. You are free to use, modify, and distribute this script in your own projects under the following conditions:
+
+    1. This policy text and credit to the original author must be retained in any versions or derivatives of the script.
+    2. Any improvements or modifications to this script should ideally be shared back with the community or made publicly available.
+    3. This script is provided “as is,” without warranty of any kind, express or implied. In no event shall the author be liable for any claim, damages, or other liability arising from its use.
+
+# VARIABLES TO UPDATE
+Before running the script, ensure to update the following variables to match your environment:
+    - $sasToken: Your SAS token providing access to the Azure Blob container.
+    - $containerName: The name of your Azure Blob container.
+    - $storageAccountName: The name of your Azure Storage account.
+    - $tagValue: The tag value to be set on each blob.
+    - $maxRetries: (Optional) The maximum number of retries for setting the blob tag. Default is 3.
+    - $maxParallelJobs: (Optional) The maximum number of parallel jobs for processing blobs. Default is 10.
+#>
+
 # SAS token, container name, and tag value
 $sasToken = "SASToken"
 $containerName = "Container"

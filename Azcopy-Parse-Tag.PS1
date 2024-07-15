@@ -12,7 +12,7 @@ The SAS token providing access to the Azure Blob container. This parameter is re
 The tag value to set on the copied blobs. This parameter is required.
 
 .EXAMPLE
-PS> .\Parse-and-Tag.PS1
+PS> .\Azcopy-Parse-Tag.PS1
 This command runs the script, parses the custom AzCopy log file in the current directory, sets the specified tag on copied blobs, and generates a CSV file with the results.
 
 .NOTES

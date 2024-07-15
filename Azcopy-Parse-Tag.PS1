@@ -18,6 +18,11 @@ This command runs the script, parses the custom AzCopy log file in the current d
 .NOTES
 Before running this script, ensure you have the necessary permissions to set tags on blobs in Azure Blob storage and that AzCopy is installed and available in your PATH. The SAS token requires TAG rights which can be provisioned in the Storage Explorer tool
 
+.ACCOMPANYING SCRIPTS
+- Azopy-First-Sync.PS1: Used to copy and tag first data migration.
+- Azcopy-Delta-Sync.PS1: Used to migrate deltas in the data.
+- Parse-And-Tag.PS1: Used to parse log files and tag data.
+
 .AUTHOR
 Lee Jolley
 

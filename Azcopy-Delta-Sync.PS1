@@ -16,7 +16,7 @@ The name of the Azure Blob container. This parameter is required.
 The SAS token providing access to the Azure Blob container. This parameter is required.
 
 .EXAMPLE
-PS> .\Azcopy-Migration.PS1
+PS> .\Azcopy-Delta-Sync.PS1
 This command runs the script and synchronizes files from the source directory to the specified Azure Blob container, logging the details of the operation.
 
 .NOTES

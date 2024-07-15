@@ -22,6 +22,10 @@ This command runs the script and synchronizes files from the source directory to
 .NOTES
 Before running this script, ensure you have the necessary permissions to access the Azure Blob storage container and that AzCopy is installed and available in your PATH.
 
+.ACCOMPANYING SCRIPTS
+- Azopy-First-Sync.PS1: Used to copy and tag first data migration.
+- Azcopy-Delta-Sync.PS1: Used to migrate deltas in the data.
+- Parse-And-Tag.PS1: Used to parse log files and tag data.
 .AUTHOR
 Lee Jolley
 

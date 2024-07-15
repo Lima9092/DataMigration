@@ -16,7 +16,7 @@ The destination URL of the Azure Blob storage container. This parameter is requi
 The tags to be applied to the copied blobs. This parameter is required.
 
 .EXAMPLE
-PS> .\BlobCopyScript.PS1
+PS> .\Azcopy-First-Sync.PS1
 This command runs the script and copies blobs from the specified source container or file share to the destination container, logging the details of the operation.
 
 .NOTES

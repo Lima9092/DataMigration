@@ -52,8 +52,8 @@ $destination = "https://$storageAccount.blob.core.windows.net/$container`?$sasTo
 # Get current directory
 $currentDir = (Get-Location).Path
 
-# Replace backslashes with underscores in the source path for the log file name
-$sourceContainer = $source -replace '\\', '_'
+# Replace backslashes with underscores in the source path and replace "." with "_" for the log file name
+$sourceContainer = $source -replace '\\', '_' -replace '\.', '_'
 
 # Generate log file name without seconds and with .log extension
 $currentDateTime = (Get-Date).ToString("yyyy-MM-dd_HH-mm")

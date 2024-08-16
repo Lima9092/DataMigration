@@ -1,5 +1,3 @@
-# Improved Robocopy Migration GUI Script
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -17,6 +15,7 @@ function Is-ValidTimeFormat {
 # Function to execute Robocopy for a given migration
 function Run-Robocopy {
     param (
+        $name,
         $source,
         $destination,
         $startTime,
@@ -24,10 +23,8 @@ function Run-Robocopy {
     )
     
     try {
-        $currentDateTime = Get-Date -Format "yyyy-MM-dd_HH-mm"
-        $sourceFormatted = $source -replace "[:\\]", "-"
-        $destinationFormatted = $destination -replace "[:\\]", "-"
-        $logFile = "robocopy_${sourceFormatted}_${destinationFormatted}_${currentDateTime}.log"
+        $currentDateTime = Get-Date -Format "ddMMyy-HHmm"
+        $logFile = "${name}-${currentDateTime}.log"
 
         $robocopyArgs = "`"$source`" `"$destination`" /E /COPY:DAT /MIR /RH:$startTime-$endTime /DCOPY:DAT /R:10 /W:5 /V /LOG:`"$logFile`" /TEE"
         $outputBox.AppendText("Executing Robocopy..." + [Environment]::NewLine)
@@ -170,7 +167,6 @@ function Summarize-Logs {
         $outputBox.AppendText("No log files found to summarize." + [Environment]::NewLine)
     } else {
         $outputBox.AppendText("Summary of Robocopy operations:" + [Environment]::NewLine)
-        
         $currentDateTime = Get-Date -Format "dd-MM-yy-HH-mm"
         $summaryPath = ".\Migration-Summary-$currentDateTime.csv"
         $summaries | Export-Csv -Path $summaryPath -NoTypeInformation
@@ -280,7 +276,7 @@ $form.Controls.Add($progressBar)
 try {
     $migrations = Import-Csv $global:csvPath
     foreach ($migration in $migrations) {
-        $migrationListBox.Items.Add("Source: $($migration.Source), Destination: $($migration.Destination)")
+        $migrationListBox.Items.Add("Name: $($migration.Name), Source: $($migration.Source), Destination: $($migration.Destination)")
     }
 }
 catch {
@@ -308,7 +304,7 @@ $runButton.Add_Click({
 
     foreach ($index in $migrationListBox.SelectedIndices) {
         $selectedMigration = $migrations[$index]
-        Run-Robocopy -source $selectedMigration.Source -destination $selectedMigration.Destination -startTime $startTime -endTime $endTime
+        Run-Robocopy -name $selectedMigration.Name -source $selectedMigration.Source -destination $selectedMigration.Destination -startTime $startTime -endTime $endTime
         $progressBar.Value += 1
         [System.Windows.Forms.Application]::DoEvents()
     }
@@ -331,7 +327,7 @@ $runAllButton.Add_Click({
     $progressBar.Maximum = $migrations.Count
 
     foreach ($migration in $migrations) {
-        Run-Robocopy -source $migration.Source -destination $migration.Destination -startTime $startTime -endTime $endTime
+        Run-Robocopy -name $migration.Name -source $migration.Source -destination $migration.Destination -startTime $startTime -endTime $endTime
         $progressBar.Value += 1
         [System.Windows.Forms.Application]::DoEvents()
     }
@@ -399,8 +395,9 @@ $helpButton.Add_Click({
         "--------------------------" + [Environment]::NewLine +
         "The CSV file should be named 'migrations.csv' and placed in the same directory as this script." + [Environment]::NewLine +
         "It should have the following columns:" + [Environment]::NewLine +
-        "1. Source: The path to the source directory (e.g., C:\scripts\source)." + [Environment]::NewLine +
-        "2. Destination: The path to the destination directory (e.g., C:\scripts\destination)." + [Environment]::NewLine + [Environment]::NewLine +
+        "1. Name: A unique name identifier for the migration." + [Environment]::NewLine +
+        "2. Source: The path to the source directory (e.g., C:\scripts\source)." + [Environment]::NewLine +
+        "3. Destination: The path to the destination directory (e.g., C:\scripts\destination)." + [Environment]::NewLine + [Environment]::NewLine +
         "How the GUI Works:" + [Environment]::NewLine +
         "--------------------------" + [Environment]::NewLine +
         "1. The list box displays all the available migrations from the CSV file." + [Environment]::NewLine +

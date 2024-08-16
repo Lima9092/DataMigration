@@ -54,11 +54,11 @@ $currentDir = (Get-Location).Path
 
 # Remove backslashes, forward slashes, and periods from the source path and container name for the log file name
 $sourceContainer = $source -replace '[\\./]', ''
-$containerNameSanitized = $container -replace '[\\./]', ''
+$containerNameSanitized = $container -replace '[/\\./]', ''  # Also remove forward slashes from the container name
 
 # Generate log file name without seconds and with .log extension
 $currentDateTime = (Get-Date).ToString("yyyy-MM-dd_HH-mm")
-$customLogFile = "$currentDir\AzCopyCustomLog_${sourceContainer}_to_${container}_$currentDateTime.log"
+$customLogFile = "$currentDir\AzCopyCustomLog_${sourceContainer}_to_${containerNameSanitized}_$currentDateTime.log"
 
 # Set environment variable for AzCopy log location
 $logDirectory = "$currentDir\AzCopyLogs"

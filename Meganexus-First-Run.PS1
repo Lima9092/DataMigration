@@ -8,6 +8,7 @@ $global:azCopyProcess = $null
 $global:currentRunLogFiles = @()
 $global:currentRunSummaries = @()
 $global:csvPath = ".\Meganexus-Migrations.csv" # CSV file path
+$global:masterSummaryPath = ".\Meganexus-Master-Summary.csv" # Master summary CSV file path
 
 # Set Azcopy Default Log Location
 $env:AZCOPY_LOG_LOCATION = Join-Path $PSScriptRoot "Logs\VerboseLogs"
@@ -228,6 +229,29 @@ $tagValueBox.Location = New-Object System.Drawing.Point(130,210)
 $tagValueBox.Size = New-Object System.Drawing.Size(200,20)
 $form.Controls.Add($tagValueBox)
 
+$scheduledStartCheckBox = New-Object System.Windows.Forms.CheckBox
+$scheduledStartCheckBox.Text = "Scheduled Start"
+$scheduledStartCheckBox.Location = New-Object System.Drawing.Point(350, 180) # Inline with Tag Name and Tag Value
+$scheduledStartCheckBox.Size = New-Object System.Drawing.Size(120, 20)
+$form.Controls.Add($scheduledStartCheckBox)
+
+$startTimeLabel = New-Object System.Windows.Forms.Label
+$startTimeLabel.Text = "Start Time:"
+$startTimeLabel.Location = New-Object System.Drawing.Point(350, 210) # Inline with Tag Name and Tag Value
+$startTimeLabel.Size = New-Object System.Drawing.Size(100, 20)
+$form.Controls.Add($startTimeLabel)
+
+$startTimeBox = New-Object System.Windows.Forms.TextBox
+$startTimeBox.Text = "18:00"
+$startTimeBox.Location = New-Object System.Drawing.Point(450, 210) # Next to the Start Time label
+$startTimeBox.Size = New-Object System.Drawing.Size(100, 20)
+$startTimeBox.Enabled = $false
+$form.Controls.Add($startTimeBox)
+
+$scheduledStartCheckBox.Add_CheckedChanged({
+    $startTimeBox.Enabled = $scheduledStartCheckBox.Checked
+})
+
 $outputBox = New-Object System.Windows.Forms.TextBox
 $outputBox.Multiline = $true
 $outputBox.ScrollBars = "Vertical"
@@ -280,6 +304,7 @@ $form.Controls.Add($progressBar)
 
 # Load CSV data
 try {
+    # Check for Meganexus-Migrations.csv
     $migrations = Import-Csv $global:csvPath
     foreach ($migration in $migrations) {
         $migrationListBox.Items.Add("Site ID: $($migration.'Site ID'), Name: $($migration.Name), Source: $($migration.Source), Destination: $($migration.Container)")
@@ -289,11 +314,53 @@ catch {
     [System.Windows.Forms.MessageBox]::Show("Error loading CSV file: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 }
 
-# Button click event handlers
+# Check if the master summary file exists; if not, create an empty one
+if (-not (Test-Path $global:masterSummaryPath)) {
+    try {
+        # Create an empty master summary CSV file with the necessary headers
+        $emptyMasterSummary = @"
+SiteID,LogFileName,JobName,JobId,Source,Destination,MigrationType,StartDate,StartTime,EndDate,EndTime,Duration (Mins),TotalFiles,TotalTransfers,FinalJobStatus
+"@
+        $emptyMasterSummary | Out-File -FilePath $global:masterSummaryPath -Encoding UTF8
+        $outputBox.AppendText("Created new master summary file at $global:masterSummaryPath" + [Environment]::NewLine)
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show("Error creating master summary file: $_", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+}
+
+# Function to wait until the scheduled start time
+function Wait-ForScheduledStart {
+    param (
+        [string]$scheduledTime
+    )
+
+    $currentDateTime = Get-Date
+    $scheduledDateTime = [datetime]::ParseExact($scheduledTime, "HH:mm", $null)
+
+    if ($scheduledDateTime -lt $currentDateTime) {
+        # If the scheduled time is in the past for today, set it to tomorrow
+        $scheduledDateTime = $scheduledDateTime.AddDays(1)
+    }
+
+    $waitTime = $scheduledDateTime - $currentDateTime
+
+    if ($waitTime.TotalSeconds -gt 0) {
+        $outputBox.AppendText("Waiting for scheduled start time: $scheduledTime" + [Environment]::NewLine)
+        Start-Sleep -Seconds $waitTime.TotalSeconds
+        $outputBox.AppendText("Scheduled start time reached: $scheduledTime" + [Environment]::NewLine)
+    }
+}
+
+
 $runButton.Add_Click({
     if ($migrationListBox.SelectedIndices.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show("Please select at least one migration from the list.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
+    }
+
+    if ($scheduledStartCheckBox.Checked) {
+        Wait-ForScheduledStart -scheduledTime $startTimeBox.Text
     }
 
     $cancelButton.Enabled = $true
@@ -313,6 +380,10 @@ $runButton.Add_Click({
 })
 
 $runAllButton.Add_Click({
+    if ($scheduledStartCheckBox.Checked) {
+        Wait-ForScheduledStart -scheduledTime $startTimeBox.Text
+    }
+
     $cancelButton.Enabled = $true
     $progressBar.Value = 0
     $progressBar.Maximum = $migrations.Count

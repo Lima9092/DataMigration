@@ -351,7 +351,7 @@ $tagValueLabel.Size = New-Object System.Drawing.Size(100,20)
 $form.Controls.Add($tagValueLabel)
 
 $tagValueBox = New-Object System.Windows.Forms.TextBox
-$tagValueBox.Text = "Yes"
+$tagValueBox.Text = "No"
 $tagValueBox.Location = New-Object System.Drawing.Point(130,210)
 $tagValueBox.Size = New-Object System.Drawing.Size(200,20)
 $form.Controls.Add($tagValueBox)

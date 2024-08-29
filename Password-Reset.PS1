@@ -93,10 +93,10 @@ $fileLabel.Location = New-Object System.Drawing.Point(150, 65)
 $fileLabel.Size = New-Object System.Drawing.Size(300, 20)
 $form.Controls.Add($fileLabel)
 
-# Create a TextBox for Output
+# Create a Textbox for Output
 $outputTextbox = New-Object system.Windows.Forms.TextBox
-$outputTextbox.Location = New-Object System.Drawing.Point(10, 150)
-$outputTextbox.Size = New-Object System.Drawing.Size(460, 250)
+$outputTextbox.Location = New-Object System.Drawing.Point(10, 100)
+$outputTextbox.Size = New-Object System.Drawing.Size(460, 300)
 $outputTextbox.Multiline = $true
 $outputTextbox.ScrollBars = "Vertical"
 $outputTextbox.ReadOnly = $true
@@ -173,8 +173,8 @@ $startButton.Add_Click({
     # Ensure AzureAD or AzureAD.Standard.Preview module is installed and imported
     Ensure-AzureADModule
     
-    # Import the CSV File
-    $users = Import-Csv -Path $filePath
+    # Import the CSV File without headers, assuming a single column of User IDs
+    $users = Import-Csv -Path $filePath -Header "UserID"
     $outputTextbox.AppendText("Imported CSV file with $($users.Count) users.`n")
 
     # Connect to Azure AD
@@ -189,67 +189,43 @@ $startButton.Add_Click({
 
     # Create an array to store the results
     $results = @()
+    # Create a hash table to track processed users
+    $processedUserIds = @{}
 
     # Password generation function
     function Generate-Password {
-        param (
-            [int]$length = 12
-        )
-        
         $varUppercase = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
         $varLowercase = "abcdefghijkmnopqrstuvwxyz"
         $varNumbers = "0123456789"
         $varSpecialChars = "!@#$%&*=+?"
 
-        $allChars = $varUppercase + $varLowercase + $varNumbers + $varSpecialChars
-        $password = -join ((1..$length) | ForEach-Object { $allChars[(Get-Random -Minimum 0 -Maximum $allChars.Length)] })
+        # 1 uppercase letter at the start
+        $password = $varUppercase[(Get-Random -Minimum 0 -Maximum $varUppercase.Length)]
+        
+        # 5 lowercase letters
+        $password += -join ((1..5) | ForEach-Object { $varLowercase[(Get-Random -Minimum 0 -Maximum $varLowercase.Length)] })
+        
+                # 5 numbers
+        $password += -join ((1..5) | ForEach-Object { $varNumbers[(Get-Random -Minimum 0 -Maximum $varNumbers.Length)] })
+        
+        # 1 special character at the end
+        $password += $varSpecialChars[(Get-Random -Minimum 0 -Maximum $varSpecialChars.Length)]
 
         return $password
     }
 
-    # Loop through each user and reset the password
+    # Loop through each user and reset the password or mark as duplicate
     foreach ($user in $users) {
         $userId = $user.UserID
         $status = "Account Not Found"
         $dateTimeNow = Get-Date
 
-        try {
-            # Query Azure AD for user details
-            $aadUser = Get-AzureADUser -ObjectId $userId
+        if ($processedUserIds.ContainsKey($userId)) {
+            # Handle duplicates
+            $status = "Duplicate"
+            $outputTextbox.AppendText("Duplicate found: $userId - Marking as Duplicate.`n")
 
-                        if ($aadUser) {
-                # Determine if the account is enabled or disabled
-                $accountStatus = if ($aadUser.AccountEnabled) { "Enabled" } else { "Disabled" }
-
-                # Generate a unique password
-                $password = Generate-Password -length 12
-
-                # Create a secure string for the password
-                $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
-
-                # Reset the user's password
-                Set-AzureADUserPassword -ObjectId $userId -Password $securePassword
-
-                # Update status to account status
-                $status = $accountStatus
-
-                # Add the user details to the results array
-                $results += [PSCustomObject]@{
-                    "Site ID"   = $siteId
-                    "First Name" = $aadUser.GivenName
-                    "Surname"   = $aadUser.Surname
-                    "UserID"    = $userId
-                    "Password"  = $password
-                    "Status"    = $status
-                    "Date"      = $dateTimeNow.ToString("dd/MM/yyyy")
-                    "Time"      = $dateTimeNow.ToString("HH:mm:ss")
-                }
-
-                # Update the output textbox
-                $outputTextbox.AppendText("Processed: $userId - Status: $status`n")
-            }
-        } catch {
-            # If an error occurs, log the UserID with "Account Not Found" status
+            # Add the duplicate to the results array without changing the password
             $results += [PSCustomObject]@{
                 "Site ID"   = $siteId
                 "First Name" = ""
@@ -260,9 +236,66 @@ $startButton.Add_Click({
                 "Date"      = $dateTimeNow.ToString("dd/MM/yyyy")
                 "Time"      = $dateTimeNow.ToString("HH:mm:ss")
             }
+        } else {
+            try {
+                # Query Azure AD for user details
+                $aadUser = Get-AzureADUser -ObjectId $userId
 
-            # Update the output textbox
-            $outputTextbox.AppendText("Error: $userId - Status: Account Not Found`n")
+                if ($aadUser) {
+                    # Determine if the account is enabled or disabled
+                    $accountStatus = if ($aadUser.AccountEnabled) { "Enabled" } else { "Disabled" }
+
+                    # Generate a unique password
+                    $password = Generate-Password
+
+                    # Create a secure string for the password
+                    $securePassword = ConvertTo-SecureString -String $password -AsPlainText -Force
+
+                    # Reset the user's password
+                    Set-AzureADUserPassword -ObjectId $userId -Password $securePassword
+
+                    # Update status to account status
+                    $status = $accountStatus
+
+                    # Add the user details to the results array
+                    $results += [PSCustomObject]@{
+                        "Site ID"   = $siteId
+                        "First Name" = $aadUser.GivenName
+                        "Surname"   = $aadUser.Surname
+                        "UserID"    = $userId
+                        "Password"  = $password
+                        "Status"    = $status
+                        "Date"      = $dateTimeNow.ToString("dd/MM/yyyy")
+                        "Time"      = $dateTimeNow.ToString("HH:mm:ss")
+                    }
+
+                    # Update the output textbox
+                    $outputTextbox.AppendText("Processed: $userId - Status: $status`n")
+
+                    # Mark this user ID as processed
+                    $processedUserIds[$userId] = $true
+                }
+            } catch {
+                if ($_.Exception.Message -like "*password does not comply with password complexity requirements*") {
+                    $status = "Password Complexity Error"
+                    $outputTextbox.AppendText("Error: $userId - Password Complexity Error: $_`n")
+                } else {
+                    $status = "Account Not Found"
+                    $outputTextbox.AppendText("Error: $userId - Status: Account Not Found`n")
+                }
+
+                # If an error occurs, log the UserID with the corresponding status
+                $results += [PSCustomObject]@{
+                    "Site ID"   = $siteId
+                    "First Name" = ""
+                    "Surname"   = ""
+                    "UserID"    = $userId
+                    "Password"  = ""
+                    "Status"    = $status
+                    "Date"      = $dateTimeNow.ToString("dd/MM/yyyy")
+                    "Time"      = $dateTimeNow.ToString("HH:mm:ss")
+                }
+            }
         }
     }
 

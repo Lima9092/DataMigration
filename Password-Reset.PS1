@@ -196,24 +196,20 @@ $startButton.Add_Click({
 
     # Password generation function
     function Generate-Password {
-        $varUppercase = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
-        $varLowercase = "abcdefghijkmnopqrstuvwxyz"
-        $varNumbers = "0123456789"
-        $varSpecialChars = "!@#$%&*=+?"
+    $varUppercase = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
+    $varLowercase = "abcdefghijkmnopqrstuvwxyz"
+    $varNumbers = "0123456789"
 
-        # 1 uppercase letter at the start
-        $password = $varUppercase[(Get-Random -Minimum 0 -Maximum $varUppercase.Length)]
-        
-        # 5 lowercase letters
-        $password += -join ((1..5) | ForEach-Object { $varLowercase[(Get-Random -Minimum 0 -Maximum $varLowercase.Length)] })
-        
-                # 5 numbers
-        $password += -join ((1..5) | ForEach-Object { $varNumbers[(Get-Random -Minimum 0 -Maximum $varNumbers.Length)] })
-        
-        # 1 special character at the end
-        $password += $varSpecialChars[(Get-Random -Minimum 0 -Maximum $varSpecialChars.Length)]
+    # 1 uppercase letter at the start
+    $password = $varUppercase[(Get-Random -Minimum 0 -Maximum $varUppercase.Length)]
+    
+    # 6 lowercase letters
+    $password += -join ((1..6) | ForEach-Object { $varLowercase[(Get-Random -Minimum 0 -Maximum $varLowercase.Length)] })
+    
+    # 1 number at the end
+    $password += $varNumbers[(Get-Random -Minimum 0 -Maximum $varNumbers.Length)]
 
-        return $password
+    return $password
     }
 
     # Loop through each user and reset the password or mark as duplicate

@@ -141,10 +141,12 @@ $helpButton.Add_Click({
     $helpMessage = "Password Reset Tool Help:`n`n" +
                    "1. Site ID: Enter a 3-character Site ID for identification purposes.`n" +
                    "2. Select CSV File: Click the 'Select CSV File' button to choose the CSV file containing the UserIDs to be processed.`n" +
-                   "   The CSV file must have a header with the following column:`n" +
-                   "   - UserID: This column should contain the User Principal Names (UPNs) or Object IDs of the users in Azure AD.`n" +
-                   "3. Start: Click the 'Start' button to begin the process. The output will be displayed in the text box and saved in a CSV file.`n" +
-                   "4. Output: The tool will display the progress and results in the output box. The final results will be saved as a CSV file in the same directory."
+                   "   The CSV file must contain a single column of User IDs without any headers.`n" +
+                   "3. Start: Click the 'Start' button to begin the process. The tool will reset passwords for the first occurrence of each User ID in Azure AD.`n" +
+                   "   - If a User ID appears more than once in the CSV file, the password will only be reset for the first occurrence. Subsequent duplicates will be logged with a 'Duplicate' status.`n" +
+                   "   - If the password does not meet Azure AD complexity requirements, the tool will log a 'Password Complexity Error' for that user.`n" +
+                   "   - The final results, including any errors or duplicate entries, will be saved in a CSV file in the same directory as the input file.`n" +
+                   "4. Output: The output box in the tool will display the progress and any errors encountered during the process. The final results will also be saved as a CSV file."
     [System.Windows.Forms.MessageBox]::Show($helpMessage, "Help")
 })
 

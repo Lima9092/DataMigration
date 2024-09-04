@@ -325,11 +325,12 @@ $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
 
-# Create controls
+# Create ListBox with vertical and horizontal scrolling
 $migrationListBox = New-Object System.Windows.Forms.ListBox
 $migrationListBox.SelectionMode = "MultiExtended"
-$migrationListBox.Location = New-Object System.Drawing.Point(20,20)
-$migrationListBox.Size = New-Object System.Drawing.Size(560,150)
+$migrationListBox.HorizontalScrollbar = $true  # Enable horizontal scrolling
+$migrationListBox.Location = New-Object System.Drawing.Point(20, 20)
+$migrationListBox.Size = New-Object System.Drawing.Size(560, 150)
 $form.Controls.Add($migrationListBox)
 
 $tagNameLabel = New-Object System.Windows.Forms.Label

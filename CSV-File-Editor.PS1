@@ -106,6 +106,10 @@ function Open-CSVFile {
         # Store the file path for saving later
         $global:currentFile = $fileName
 
+        # Manually read the first line of the file to get the headers in order
+        $csvLines = Get-Content -Path $fileName
+        $headers = $csvLines[0] -split ','
+
         # Load the CSV into the DataGrid by converting each row into a hashtable
         $csvData = Import-Csv $fileName
         $convertedData = @()
@@ -115,6 +119,15 @@ function Open-CSVFile {
                 $hashtable[$column.Name] = $column.Value
             }
             $convertedData += [pscustomobject]$hashtable
+        }
+
+        # Create columns explicitly in the order from the CSV file's headers
+        $dataGrid.Columns.Clear()
+        foreach ($header in $headers) {
+            $gridColumn = New-Object System.Windows.Controls.DataGridTextColumn
+            $gridColumn.Header = $header
+            $gridColumn.Binding = New-Object System.Windows.Data.Binding $header
+            $dataGrid.Columns.Add($gridColumn)
         }
 
         # Bind the converted data to the DataGrid

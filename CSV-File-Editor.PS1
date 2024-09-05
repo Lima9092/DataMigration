@@ -13,7 +13,7 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
 # Create the main window
 $window = New-Object System.Windows.Window
-$window.Title = "CSV Editor"
+$window.Title = "CSV Viewer"
 $window.Width = 800
 $window.Height = 600
 $window.WindowStartupLocation = "CenterScreen"
@@ -44,12 +44,6 @@ $openFileButton.Width = 80
 $openFileButton.Height = 30
 $openFileButton.Margin = "5,5,5,5"
 
-$saveButton = New-Object System.Windows.Controls.Button
-$saveButton.Content = "Save CSV"
-$saveButton.Width = 80
-$saveButton.Height = 30
-$saveButton.Margin = "5,5,5,5"
-
 $copyButton = New-Object System.Windows.Controls.Button
 $copyButton.Content = "Copy"
 $copyButton.Width = 80
@@ -73,7 +67,6 @@ $fileSizeLabel.Margin = "20,5,5,5"
 
 # Add buttons and stats to the ribbon
 $ribbonPanel.Children.Add($openFileButton)
-$ribbonPanel.Children.Add($saveButton)
 $ribbonPanel.Children.Add($copyButton)
 $ribbonPanel.Children.Add($exitButton)
 $ribbonPanel.Children.Add($linesLabel)
@@ -83,10 +76,10 @@ $ribbonPanel.Children.Add($fileSizeLabel)
 $mainGrid.Children.Add($ribbonPanel)
 [System.Windows.Controls.Grid]::SetRow($ribbonPanel, 0)
 
-# Create a DataGrid to display and edit the CSV content
+# Create a DataGrid to display the CSV content
 $dataGrid = New-Object System.Windows.Controls.DataGrid
 $dataGrid.AutoGenerateColumns = $false  # Disable auto-generation of columns
-$dataGrid.IsReadOnly = $false  # Allow editing of cells
+$dataGrid.IsReadOnly = $true  # Read-only mode
 $dataGrid.HorizontalScrollBarVisibility = "Auto"
 $dataGrid.VerticalScrollBarVisibility = "Auto"
 $dataGrid.CanUserResizeColumns = $true
@@ -113,7 +106,7 @@ function Open-CSVFile {
     $fileName = $openFileDialog.FileName
 
     if ($fileName) {
-        # Store the file path for saving later
+        # Store the file path for stats
         $global:currentFile = $fileName
 
         # Manually read the first line of the file to get the headers in order
@@ -159,26 +152,6 @@ function Open-CSVFile {
     }
 }
 
-# Function to save the CSV file
-function Save-CSVFile {
-    if ($currentFile -ne $null) {
-        # Get the data from the DataGrid
-        $csvData = $dataGrid.ItemsSource
-
-        # Convert the data back into CSV format
-        $csvLines = @()
-        $headers = ($csvData[0].PSObject.Properties.Name) -join ","
-        $csvLines += $headers
-
-        foreach ($row in $csvData) {
-            $csvLines += ($row.PSObject.Properties.Value) -join ","
-        }
-
-        # Save the CSV back to the original file
-        Set-Content -Path $currentFile -Value $csvLines
-    }
-}
-
 # Copy selected data
 function Copy-SelectedData {
     $selectedCells = $dataGrid.SelectedCells
@@ -215,7 +188,6 @@ function Copy-SelectedData {
 
 # Button click events
 $openFileButton.Add_Click({ Open-CSVFile })
-$saveButton.Add_Click({ Save-CSVFile })
 $copyButton.Add_Click({ Copy-SelectedData })
 $exitButton.Add_Click({ $window.Close() })
 

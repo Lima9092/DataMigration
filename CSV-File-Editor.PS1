@@ -1,3 +1,13 @@
+# Minimize PowerShell window
+$psWindow = (Get-Process -Id $PID).MainWindowHandle
+if ($psWindow -ne [IntPtr]::Zero) {
+    $ShowWindowAsync = Add-Type -MemberDefinition @"
+        [DllImport("user32.dll")] 
+        public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+"@ -Name "Win32ShowWindowAsync" -Namespace Win32Functions -PassThru
+    $ShowWindowAsync::ShowWindowAsync($psWindow, 2) # 2 minimizes the window
+}
+
 # Load necessary assemblies
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
@@ -75,7 +85,7 @@ $mainGrid.Children.Add($ribbonPanel)
 
 # Create a DataGrid to display and edit the CSV content
 $dataGrid = New-Object System.Windows.Controls.DataGrid
-$dataGrid.AutoGenerateColumns = $true
+$dataGrid.AutoGenerateColumns = $false  # Disable auto-generation of columns
 $dataGrid.IsReadOnly = $false  # Allow editing of cells
 $dataGrid.HorizontalScrollBarVisibility = "Auto"
 $dataGrid.VerticalScrollBarVisibility = "Auto"
@@ -108,10 +118,19 @@ function Open-CSVFile {
 
         # Manually read the first line of the file to get the headers in order
         $csvLines = Get-Content -Path $fileName
+        if ($csvLines.Count -eq 0) {
+            [System.Windows.MessageBox]::Show("The file is empty!", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+            return
+        }
         $headers = $csvLines[0] -split ','
 
         # Load the CSV into the DataGrid by converting each row into a hashtable
         $csvData = Import-Csv $fileName
+        if ($csvData.Count -eq 0) {
+            [System.Windows.MessageBox]::Show("The CSV file has no data!", "Error", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Error)
+            return
+        }
+
         $convertedData = @()
         foreach ($row in $csvData) {
             $hashtable = @{}

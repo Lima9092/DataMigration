@@ -532,17 +532,34 @@ $viewSummaryButton.Add_Click({
         try {
             # Read the CSV file
             $csvData = Import-Csv $masterSummaryPath
-            
+ 
             if ($csvData.Count -eq 0) {
                 throw "The CSV file is empty."
             }
-
+ 
+            # Convert CSV data to DataTable for DataGridView
+            $dataTable = New-Object System.Data.DataTable
+ 
+            # Add columns to DataTable based on CSV headers
+            foreach ($property in $csvData[0].PSObject.Properties) {
+                $dataTable.Columns.Add($property.Name) | Out-Null
+            }
+ 
+            # Add rows to DataTable
+            foreach ($row in $csvData) {
+                $dataRow = $dataTable.NewRow()
+                foreach ($property in $row.PSObject.Properties) {
+                    $dataRow[$property.Name] = $property.Value
+                }
+                $dataTable.Rows.Add($dataRow)
+            }
+ 
             # Create a new form for displaying the summary
             $summaryForm = New-Object System.Windows.Forms.Form
-            $summaryForm.Text = "Meganexus Master Summary"
+            $summaryForm.Text = "PES Master Summary"
             $summaryForm.Size = New-Object System.Drawing.Size(1000,600)
             $summaryForm.StartPosition = "CenterScreen"
-
+ 
             # Create a DataGridView to display the summary content
             $dataGridView = New-Object System.Windows.Forms.DataGridView
             $dataGridView.Dock = "Fill"
@@ -551,33 +568,11 @@ $viewSummaryButton.Add_Click({
             $dataGridView.ReadOnly = $true
             $dataGridView.AutoSizeColumnsMode = "Fill"
             $dataGridView.ColumnHeadersHeightSizeMode = "AutoSize"
-            $dataGridView.AutoGenerateColumns = $true
-
+            $dataGridView.DataSource = $dataTable  # Set DataTable as DataSource
+ 
             # Add the DataGridView to the form
             $summaryForm.Controls.Add($dataGridView)
-
-            # Attempt to set the DataSource
-            $dataGridView.DataSource = [System.Collections.ArrayList]::new($csvData)
-
-            # If DataSource method doesn't work, manually add columns and rows
-            if ($dataGridView.Rows.Count -eq 0) {
-                # Add columns
-                foreach ($property in $csvData[0].PSObject.Properties) {
-                    $dataGridView.Columns.Add($property.Name, $property.Name)
-                }
-
-                # Add rows
-                foreach ($row in $csvData) {
-                    $dataGridView.Rows.Add($row.PSObject.Properties.Value)
-                }
-            }
-
-            # Show row count for debugging
-            $rowCountLabel = New-Object System.Windows.Forms.Label
-            $rowCountLabel.Text = "Rows: $($dataGridView.Rows.Count)"
-            $rowCountLabel.Dock = "Top"
-            $summaryForm.Controls.Add($rowCountLabel)
-
+ 
             # Show the form
             $summaryForm.ShowDialog()
         }
@@ -588,7 +583,7 @@ $viewSummaryButton.Add_Click({
     else {
         [System.Windows.Forms.MessageBox]::Show("Master summary file not found: $masterSummaryPath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     }
-})
+})  # Closing bracket for the Add_Click event handler
 
 $helpButton.Add_Click({
     [System.Windows.Forms.MessageBox]::Show(

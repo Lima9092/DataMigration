@@ -82,9 +82,15 @@ $btnBrowse.Size = New-Object System.Drawing.Size(100,20)
 $btnBrowse.Text = "Browse"
 $form.Controls.Add($btnBrowse)
 
+$chkRecurse = New-Object System.Windows.Forms.CheckBox
+$chkRecurse.Location = New-Object System.Drawing.Point(540,80)
+$chkRecurse.Size = New-Object System.Drawing.Size(150,20)
+$chkRecurse.Text = "Include Subdirectories"
+$form.Controls.Add($chkRecurse)
+
 $btnSearch = New-Object System.Windows.Forms.Button
-$btnSearch.Location = New-Object System.Drawing.Point(570,20)
-$btnSearch.Size = New-Object System.Drawing.Size(100,80)
+$btnSearch.Location = New-Object System.Drawing.Point(690,20)
+$btnSearch.Size = New-Object System.Drawing.Size(80,80)
 $btnSearch.Text = "Search"
 $form.Controls.Add($btnSearch)
 
@@ -121,9 +127,17 @@ $btnSearch.Add_Click({
     $startDate = $dtpStart.Value.Date
     $endDate = $dtpEnd.Value.Date.AddDays(1).AddSeconds(-1)
     $useAllDates = $chkAllDates.Checked
+    $recurse = $chkRecurse.Checked
 
     $logPath = $txtFolder.Text
-    $logFiles = Get-ChildItem -Path $logPath -Include *.log, *.csv -Recurse
+    
+    # Use different methods to get files based on recursion option
+    if ($recurse) {
+        $logFiles = Get-ChildItem -Path $logPath -Include *.log, *.csv -Recurse
+    } else {
+        $logFiles = Get-ChildItem -Path $logPath -Filter *.log
+        $logFiles += Get-ChildItem -Path $logPath -Filter *.csv
+    }
 
     foreach ($file in $logFiles) {
         if ($file.Name -match '(\d{6}-\d{4})') {
@@ -150,7 +164,7 @@ $btnSearch.Add_Click({
                                 }
                             }
                             if ($matchFound) {
-                                $item = New-Object System.Windows.Forms.ListViewItem($file.Name)
+                                $item = New-Object System.Windows.Forms.ListViewItem($file.FullName)
                                 $item.SubItems.Add($fileDate.ToString("yyyy-MM-dd HH:mm"))
                                 $item.SubItems.Add($currentEntry.Trim())
                                 $lstResults.Items.Add($item)
@@ -175,7 +189,7 @@ $btnSearch.Add_Click({
                         }
                     }
                     if ($matchFound) {
-                        $item = New-Object System.Windows.Forms.ListViewItem($file.Name)
+                        $item = New-Object System.Windows.Forms.ListViewItem($file.FullName)
                         $item.SubItems.Add($fileDate.ToString("yyyy-MM-dd HH:mm"))
                         $item.SubItems.Add($currentEntry.Trim())
                         $lstResults.Items.Add($item)

@@ -1,6 +1,23 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Add this type to allow window manipulation
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class ConsoleWindow {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+
+# Minimize the PowerShell console window
+$consolePtr = [ConsoleWindow]::GetConsoleWindow()
+[ConsoleWindow]::ShowWindow($consolePtr, 2)
+
 # Create the main form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Log Search Tool"

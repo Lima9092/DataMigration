@@ -1,27 +1,10 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Add this type to allow window manipulation
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class ConsoleWindow {
-    [DllImport("kernel32.dll")]
-    public static extern IntPtr GetConsoleWindow();
-
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-}
-"@
-
-# Minimize the PowerShell console window
-$consolePtr = [ConsoleWindow]::GetConsoleWindow()
-[ConsoleWindow]::ShowWindow($consolePtr, 2)
-
 # Create the main form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Log Search Tool"
-$form.Size = New-Object System.Drawing.Size(800,600)
+$form.Size = New-Object System.Drawing.Size(800,650)
 $form.StartPosition = "CenterScreen"
 
 # Create and add controls
@@ -105,24 +88,29 @@ $lstResults.Columns.Add("Content", 490)
 $form.Controls.Add($lstResults)
 
 $btnSave = New-Object System.Windows.Forms.Button
-$btnSave.Location = New-Object System.Drawing.Point(10,530)
+$btnSave.Location = New-Object System.Drawing.Point(10,580)
 $btnSave.Size = New-Object System.Drawing.Size(100,30)
 $btnSave.Text = "Save to CSV"
 $form.Controls.Add($btnSave)
 
+$progressBar = New-Object System.Windows.Forms.ProgressBar
+$progressBar.Location = New-Object System.Drawing.Point(10,530)
+$progressBar.Size = New-Object System.Drawing.Size(760,20)
+$form.Controls.Add($progressBar)
+
+$statusLabel = New-Object System.Windows.Forms.Label
+$statusLabel.Location = New-Object System.Drawing.Point(10,555)
+$statusLabel.Size = New-Object System.Drawing.Size(760,20)
+$statusLabel.Text = "Ready"
+$form.Controls.Add($statusLabel)
+
 # Event handlers
-$btnBrowse.Add_Click({
-    $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-    $folderBrowser.Description = "Select the folder containing log files"
-    $folderBrowser.SelectedPath = $txtFolder.Text
-
-    if ($folderBrowser.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $txtFolder.Text = $folderBrowser.SelectedPath
-    }
-})
-
 $btnSearch.Add_Click({
     $lstResults.Items.Clear()
+    $progressBar.Value = 0
+    $statusLabel.Text = "Preparing to search..."
+    $form.Refresh()
+
     $keywords = $txtKeywords.Text -split ',' | ForEach-Object { $_.Trim() }
     $startDate = $dtpStart.Value.Date
     $endDate = $dtpEnd.Value.Date.AddDays(1).AddSeconds(-1)
@@ -131,15 +119,22 @@ $btnSearch.Add_Click({
 
     $logPath = $txtFolder.Text
     
-    # Use different methods to get files based on recursion option
     if ($recurse) {
         $logFiles = Get-ChildItem -Path $logPath -Include *.log, *.csv -Recurse
     } else {
-        $logFiles = Get-ChildItem -Path $logPath -Filter *.log
-        $logFiles += Get-ChildItem -Path $logPath -Filter *.csv
+        $logFiles = @(Get-ChildItem -Path $logPath -Filter *.log)
+        $logFiles += @(Get-ChildItem -Path $logPath -Filter *.csv)
     }
 
+    $totalFiles = $logFiles.Count
+    $processedFiles = 0
+
     foreach ($file in $logFiles) {
+        $processedFiles++
+        $progressBar.Value = ($processedFiles / $totalFiles) * 100
+        $statusLabel.Text = "Processing file $processedFiles of $totalFiles`: $($file.Name)"
+        $form.Refresh()
+
         if ($file.Name -match '(\d{6}-\d{4})') {
             try {
                 $fileDate = [DateTime]::ParseExact($matches[1], "ddMMyy-HHmm", $null)
@@ -202,6 +197,9 @@ $btnSearch.Add_Click({
             Write-Host "Filename does not match expected format: $($file.Name)"
         }
     }
+
+    $statusLabel.Text = "Search completed. Found $($lstResults.Items.Count) results."
+    $progressBar.Value = 100
 })
 
 $btnSave.Add_Click({
@@ -223,14 +221,12 @@ $btnSave.Add_Click({
     }
 })
 
-$chkAllDates.Add_CheckedChanged({
-    $dtpStart.Enabled = -not $chkAllDates.Checked
-    $dtpEnd.Enabled = -not $chkAllDates.Checked
-})
-
-# Resize event handler
 $form.Add_Resize({
-    $lstResults.Size = New-Object System.Drawing.Size(($form.ClientSize.Width - 20), ($form.ClientSize.Height - 150))
+    $lstResults.Size = New-Object System.Drawing.Size(($form.ClientSize.Width - 20), ($form.ClientSize.Height - 220))
+    $progressBar.Location = New-Object System.Drawing.Point(10, ($form.ClientSize.Height - 90))
+    $progressBar.Width = $form.ClientSize.Width - 20
+    $statusLabel.Location = New-Object System.Drawing.Point(10, ($form.ClientSize.Height - 65))
+    $statusLabel.Width = $form.ClientSize.Width - 20
     $btnSave.Location = New-Object System.Drawing.Point(10, ($form.ClientSize.Height - 40))
 })
 

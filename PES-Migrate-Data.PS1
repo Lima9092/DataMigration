@@ -217,6 +217,33 @@ function Summarize-Logs {
     # Create a new entries array for the master summary
     $newEntries = $global:currentRunSummaries
 
+    # Display summary details in the output box
+    foreach ($summary in $global:currentRunSummaries) {
+        $outputBox.AppendText("========================================" + [Environment]::NewLine)
+        $outputBox.AppendText("Site ID       : $($summary.SiteID)" + [Environment]::NewLine)
+        $outputBox.AppendText("Name          : $($summary.Name)" + [Environment]::NewLine)
+        $outputBox.AppendText("Source        : $($summary.Source)" + [Environment]::NewLine)
+        $outputBox.AppendText("Destination   : $($summary.Destination)" + [Environment]::NewLine)
+        $outputBox.AppendText("Start Time    : $($summary.StartDate) $($summary.StartTime)" + [Environment]::NewLine)
+        $outputBox.AppendText("End Time      : $($summary.EndDate) $($summary.EndTime)" + [Environment]::NewLine)
+        $outputBox.AppendText("Duration      : $($summary.Duration)" + [Environment]::NewLine)
+        $outputBox.AppendText("Total Files   : $($summary.TotalFiles)" + [Environment]::NewLine)
+        $outputBox.AppendText("Total Dirs    : $($summary.TotalDirs)" + [Environment]::NewLine)
+        $outputBox.AppendText("Total Size GB : $($summary.TotalSizeGB)" + [Environment]::NewLine)
+        $outputBox.AppendText("Files Skipped : $($summary.Skipped)" + [Environment]::NewLine)
+        $outputBox.AppendText("Files Failed  : $($summary.Failed)" + [Environment]::NewLine)
+        $outputBox.AppendText("Speed (Mbps)  : $($summary.SpeedMbps)" + [Environment]::NewLine)
+        $outputBox.AppendText("Speed (GB/hr) : $($summary.SpeedGBperHour)" + [Environment]::NewLine)
+        if ($summary.ErrorMessages) {
+            $outputBox.AppendText("Errors        :" + [Environment]::NewLine)
+            foreach ($error in $summary.ErrorMessages) {
+                $outputBox.AppendText("  - $error" + [Environment]::NewLine)
+            }
+        }
+        $outputBox.AppendText("========================================" + [Environment]::NewLine + [Environment]::NewLine)
+        $outputBox.ScrollToCaret()
+    }
+
     # Check if Master Summary CSV exists, if not create it
     if (-not (Test-Path $masterSummaryPath)) {
         $newEntries | Export-Csv -Path $masterSummaryPath -NoTypeInformation

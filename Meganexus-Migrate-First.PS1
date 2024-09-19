@@ -10,9 +10,6 @@ $global:currentRunSummaries = @()
 $global:csvPath = ".\Meganexus-Migrations.csv" # CSV file path
 $global:masterSummaryPath = ".\Meganexus-Master-Summary.csv" # Master summary CSV file path
 
-# Set Azcopy Default Log Location
-$env:AZCOPY_LOG_LOCATION = Join-Path $PSScriptRoot "Logs\VerboseLogs"
-
 # Helper function to extract values from log content
 function Get-LogValue {
     param (
@@ -44,7 +41,14 @@ function Run-AzCopy {
         $currentDateTime = Get-Date -Format "ddMMyy-HHmm"
         $destination = "https://$storageAccount.blob.core.windows.net/$container"
         $fullDestination = "$destination`?$sasToken"
-        
+
+        # Set AzCopy log location per SiteID
+        $logFolder = Join-Path -Path $PSScriptRoot -ChildPath "Logs\$siteId\AZ-VerboseLogs"
+        if (-not (Test-Path $logFolder)) {
+            New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
+        }
+        $env:AZCOPY_LOG_LOCATION = $logFolder
+
         $azCopyArgs = @(
             "cp",
             "`"$source/*`"",
@@ -117,7 +121,7 @@ function Summarize-Logs {
         New-Item -ItemType Directory -Path $logsFolder -Force | Out-Null
     }
 
-    $summaryFileName = "Meganexus-FirstRun-Summary-$currentDateTime.csv"
+    $summaryFileName = "AZ-FirstRun-$currentDateTime.csv"
 
     # Group summaries by Site ID
     $groupedSummaries = $global:currentRunSummaries | Group-Object -Property SiteID
@@ -187,6 +191,14 @@ function Summarize-Logs {
         $outputBox.AppendText("  Files: Total=$($item.TotalFiles), Transferred=$($item.TotalTransfers)" + [Environment]::NewLine)
         $outputBox.AppendText("  Final Job Status: $($item.FinalJobStatus)" + [Environment]::NewLine)
         $outputBox.AppendText([Environment]::NewLine)
+        if ($summary.ErrorMessages) {
+        $outputBox.AppendText("Errors        :" + [Environment]::NewLine)
+        foreach ($error in $summary.ErrorMessages) {
+            $outputBox.AppendText("  - $error" + [Environment]::NewLine)
+            }
+        }
+        $outputBox.AppendText("========================================" + [Environment]::NewLine + [Environment]::NewLine)
+        $outputBox.ScrollToCaret()
     }
 }
 
@@ -406,34 +418,17 @@ $viewSummaryButton.Add_Click({
         try {
             # Read the CSV file
             $csvData = Import-Csv $masterSummaryPath
- 
+            
             if ($csvData.Count -eq 0) {
                 throw "The CSV file is empty."
             }
- 
-            # Convert CSV data to DataTable for DataGridView
-            $dataTable = New-Object System.Data.DataTable
- 
-            # Add columns to DataTable based on CSV headers
-            foreach ($property in $csvData[0].PSObject.Properties) {
-                $dataTable.Columns.Add($property.Name) | Out-Null
-            }
- 
-            # Add rows to DataTable
-            foreach ($row in $csvData) {
-                $dataRow = $dataTable.NewRow()
-                foreach ($property in $row.PSObject.Properties) {
-                    $dataRow[$property.Name] = $property.Value
-                }
-                $dataTable.Rows.Add($dataRow)
-            }
- 
+
             # Create a new form for displaying the summary
             $summaryForm = New-Object System.Windows.Forms.Form
-            $summaryForm.Text = "PES Master Summary"
+            $summaryForm.Text = "Meganexus Master Summary"
             $summaryForm.Size = New-Object System.Drawing.Size(1000,600)
             $summaryForm.StartPosition = "CenterScreen"
- 
+
             # Create a DataGridView to display the summary content
             $dataGridView = New-Object System.Windows.Forms.DataGridView
             $dataGridView.Dock = "Fill"
@@ -442,11 +437,33 @@ $viewSummaryButton.Add_Click({
             $dataGridView.ReadOnly = $true
             $dataGridView.AutoSizeColumnsMode = "Fill"
             $dataGridView.ColumnHeadersHeightSizeMode = "AutoSize"
-            $dataGridView.DataSource = $dataTable  # Set DataTable as DataSource
- 
+            $dataGridView.AutoGenerateColumns = $true
+
             # Add the DataGridView to the form
             $summaryForm.Controls.Add($dataGridView)
- 
+
+            # Attempt to set the DataSource
+            $dataGridView.DataSource = [System.Collections.ArrayList]::new($csvData)
+
+            # If DataSource method doesn't work, manually add columns and rows
+            if ($dataGridView.Rows.Count -eq 0) {
+                # Add columns
+                foreach ($property in $csvData[0].PSObject.Properties) {
+                    $dataGridView.Columns.Add($property.Name, $property.Name)
+                }
+
+                # Add rows
+                foreach ($row in $csvData) {
+                    $dataGridView.Rows.Add($row.PSObject.Properties.Value)
+                }
+            }
+
+            # Show row count for debugging
+            $rowCountLabel = New-Object System.Windows.Forms.Label
+            $rowCountLabel.Text = "Rows: $($dataGridView.Rows.Count)"
+            $rowCountLabel.Dock = "Top"
+            $summaryForm.Controls.Add($rowCountLabel)
+
             # Show the form
             $summaryForm.ShowDialog()
         }
@@ -457,7 +474,7 @@ $viewSummaryButton.Add_Click({
     else {
         [System.Windows.Forms.MessageBox]::Show("Master summary file not found: $masterSummaryPath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     }
-})  # Closing bracket for the Add_Click event handler
+})
 
 $helpButton.Add_Click({
     [System.Windows.Forms.MessageBox]::Show(
@@ -482,8 +499,8 @@ $helpButton.Add_Click({
         "7. Use the 'Cancel' button to stop the current operation." + [Environment]::NewLine +
         "8. The progress bar shows the overall progress of the operation." + [Environment]::NewLine +
         "9. Click 'Exit' to close the application." + [Environment]::NewLine +
-        "10. Verbose logs are saved in the 'Logs/VerboseLogs' subfolder." + [Environment]::NewLine +
-        "11. A summary log is created as 'Meganexus-FirstRun-Summary-[DateTime].csv' in the 'Logs' folder." + [Environment]::NewLine +
+        "10. Verbose logs are saved in the 'Logs\<SiteID>\AZ-VerboseLogs' subfolder." + [Environment]::NewLine +
+        "11. A summary log is created as 'AZ-FirstRun-[DateTime].csv' in the 'Logs' folder." + [Environment]::NewLine +
         "12. A master summary is maintained in 'Meganexus-Master-Summary.csv' in the script directory.",
         "Help"
     )

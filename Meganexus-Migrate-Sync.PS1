@@ -18,7 +18,6 @@ if ($consolePtr -ne [IntPtr]::Zero) {
 }
 
 # Meganexus Migration GUI: Sync
-
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -28,9 +27,6 @@ $global:currentRunLogFiles = @()
 $global:currentRunSummaries = @()
 $global:csvPath = ".\Meganexus-Migrations.csv" # CSV file path
 $global:masterSummaryPath = ".\Meganexus-Master-Summary.csv" # Master summary CSV file path
-
-# Set Azcopy Default Log Location
-$env:AZCOPY_LOG_LOCATION = Join-Path $PSScriptRoot "Logs\VerboseLogs"
 
 # Helper function to extract values from log content
 function Get-LogValue {
@@ -64,6 +60,14 @@ function Run-AzCopySync {
         $destination = "https://$storageAccount.blob.core.windows.net/$container"
         $fullDestination = "$destination`?$sasToken"
         
+        # Set AzCopy log location per SiteID
+        $logFolder = Join-Path -Path $PSScriptRoot -ChildPath "Logs\$siteId\AZ-VerboseLogs"
+        if (-not (Test-Path $logFolder)) {
+            New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
+        }
+        $env:AZCOPY_LOG_LOCATION = $logFolder
+        $outputBox.AppendText("AZCOPY_LOG_LOCATION set to: $env:AZCOPY_LOG_LOCATION" + [Environment]::NewLine)
+
         $azCopyArgs = @(
             "sync",
             "`"$source`"",
@@ -76,40 +80,75 @@ function Run-AzCopySync {
         $outputBox.AppendText("azcopy $($azCopyArgs -join ' ')" + [Environment]::NewLine)
 
         $startTime = Get-Date
-        $azCopyOutput = & azcopy $azCopyArgs 2>&1
+        $azCopyOutputArray = & azcopy $azCopyArgs 2>&1
+        $azCopyOutput = $azCopyOutputArray -join "`n"
 
+        $outputBox.AppendText("AzCopy Output:" + [Environment]::NewLine)
         $outputBox.AppendText($azCopyOutput + [Environment]::NewLine)
 
         # Extract JobID from the output
-        $jobId = [regex]::Match($azCopyOutput, "Job ([a-f0-9-]+) has started").Groups[1].Value
-
-        # Refine log file path extraction to only capture the actual file path ending with .log
-        $logFilePath = [regex]::Match($azCopyOutput, "Log file is located at: (.+\.log)").Groups[1].Value.Trim()
-        
-        if (-not $logFilePath) {
-            throw "Log file path not found in AzCopy output."
+        $jobIdMatch = [regex]::Match($azCopyOutput, "Job ([a-f0-9-]+) has (started|completed)")
+        if ($jobIdMatch.Success) {
+            $jobId = $jobIdMatch.Groups[1].Value
+            $outputBox.AppendText("Extracted Job ID: $jobId" + [Environment]::NewLine)
+        } else {
+            $outputBox.AppendText("Job ID not found in AzCopy output." + [Environment]::NewLine)
+            $jobId = "N/A"
         }
 
-        if (-not (Test-Path $logFilePath)) {
-            throw "Log file not found: $logFilePath"
+        # Extract log file path
+        $logFilePathMatch = [regex]::Match($azCopyOutput, "Log file is located at: (.+\.log)")
+        if ($logFilePathMatch.Success) {
+            $logFilePath = $logFilePathMatch.Groups[1].Value.Trim()
+            $outputBox.AppendText("Extracted Log File Path: $logFilePath" + [Environment]::NewLine)
+        } else {
+            $outputBox.AppendText("Log file path not found in AzCopy output." + [Environment]::NewLine)
+            $logFilePath = ""
         }
-        
-        # Read the log content
-        $logFileContent = Get-Content -Path $logFilePath
-        
-        # Parse the log file and tag files
-        Parse-AzCopyLogAndTagFiles -siteId $siteId -jobId $jobId -logFileContent $logFileContent -sasToken $sasToken -tagName $tagName -tagValue $tagValue -currentDateTime $currentDateTime
 
-        # Now, capture the end time after tagging is complete
+        if ($logFilePath -and (Test-Path $logFilePath)) {
+            # Read the log content
+            $logFileContent = Get-Content -Path $logFilePath
+
+            # Parse the log file and tag files
+            Parse-AzCopyLogAndTagFiles -siteId $siteId -jobId $jobId -logFileContent $logFileContent -sasToken $sasToken -tagName $tagName -tagValue $tagValue -currentDateTime $currentDateTime
+        } else {
+            $outputBox.AppendText("Log file not found: $logFilePath" + [Environment]::NewLine)
+        }
+
+        # End time after tagging is complete
         $endTime = Get-Date
 
         # Calculate duration
         $duration = ($endTime - $startTime).TotalMinutes
 
         # Extract other information from the output
-        $totalFiles = [regex]::Match($azCopyOutput, "Number of Copy Transfers for Files: (\d+)").Groups[1].Value
-        $totalTransfers = [regex]::Match($azCopyOutput, "Total Number of Copy Transfers: (\d+)").Groups[1].Value
-        $finalJobStatus = [regex]::Match($azCopyOutput, "Final Job Status: (\w+)").Groups[1].Value
+        $totalFilesMatch = [regex]::Match($azCopyOutput, "Number of (File )?Transfers(?: for Files)?: (\d+)")
+        if ($totalFilesMatch.Success) {
+            $totalFiles = $totalFilesMatch.Groups[2].Value
+            $outputBox.AppendText("Extracted Total Files: $totalFiles" + [Environment]::NewLine)
+        } else {
+            $outputBox.AppendText("Total Files not found in AzCopy output." + [Environment]::NewLine)
+            $totalFiles = "0"
+        }
+
+        $totalTransfersMatch = [regex]::Match($azCopyOutput, "Total Number of (Copy )?Transfers(?: for Files)?: (\d+)")
+        if ($totalTransfersMatch.Success) {
+            $totalTransfers = $totalTransfersMatch.Groups[2].Value
+            $outputBox.AppendText("Extracted Total Transfers: $totalTransfers" + [Environment]::NewLine)
+        } else {
+            $outputBox.AppendText("Total Transfers not found in AzCopy output." + [Environment]::NewLine)
+            $totalTransfers = "0"
+        }
+
+        $finalJobStatusMatch = [regex]::Match($azCopyOutput, "Final Job Status: (\w+)")
+        if ($finalJobStatusMatch.Success) {
+            $finalJobStatus = $finalJobStatusMatch.Groups[1].Value
+            $outputBox.AppendText("Extracted Final Job Status: $finalJobStatus" + [Environment]::NewLine)
+        } else {
+            $outputBox.AppendText("Final Job Status not found in AzCopy output." + [Environment]::NewLine)
+            $finalJobStatus = "Unknown"
+        }
 
         # Create a summary object
         $summary = [PSCustomObject]@{
@@ -129,7 +168,11 @@ function Run-AzCopySync {
             FinalJobStatus    = $finalJobStatus
         }
 
+        $outputBox.AppendText("Summary Object Created:" + [Environment]::NewLine)
+        $outputBox.AppendText(($summary | Out-String))
+
         $global:currentRunSummaries += $summary
+        $outputBox.AppendText("Added summary to current run summaries. Count is now: $($global:currentRunSummaries.Count)" + [Environment]::NewLine)
 
         $outputBox.AppendText("AzCopy Sync job completed." + [Environment]::NewLine)
     }
@@ -222,7 +265,7 @@ function Parse-AzCopyLogAndTagFiles {
         New-Item -ItemType Directory -Path $sitePath -Force | Out-Null
     }
 
-    $changedBlobsFileName = "Meganexus-Changed-Blobs-$currentDateTime.csv"
+    $changedBlobsFileName = "AZ-Changed-Blobs-$currentDateTime.csv"
     $changedBlobsFilePath = Join-Path $sitePath $changedBlobsFileName
 
     # Save the CSV file
@@ -232,88 +275,113 @@ function Parse-AzCopyLogAndTagFiles {
 
 # Function for logging summaries
 function Summarize-Logs {
-    if ($global:currentRunSummaries.Count -eq 0) {
-        $outputBox.AppendText("No AzCopy operations found for the current run." + [Environment]::NewLine)
-        return
-    }
-
-    $outputBox.AppendText("Summary of AzCopy Sync operations:" + [Environment]::NewLine)
-    
-    $currentDateTime = Get-Date -Format "ddMMyy-HHmm"
-    $logsFolder = Join-Path $PSScriptRoot "Logs"
-    if (-not (Test-Path $logsFolder)) {
-        New-Item -ItemType Directory -Path $logsFolder -Force | Out-Null
-    }
-
-    $summaryFileName = "Meganexus-Sync-Summary-$currentDateTime.csv"
-
-    # Group summaries by Site ID
-    $groupedSummaries = $global:currentRunSummaries | Group-Object -Property SiteID
-
-    foreach ($group in $groupedSummaries) {
-        $siteId = $group.Name
-        $sitePath = Join-Path $logsFolder $siteId
-        if (-not (Test-Path $sitePath)) {
-            New-Item -ItemType Directory -Path $sitePath -Force | Out-Null
+    try {
+        $outputBox.AppendText("Entering Summarize-Logs function." + [Environment]::NewLine)
+        if ($global:currentRunSummaries.Count -eq 0) {
+            $outputBox.AppendText("No AzCopy operations found for the current run." + [Environment]::NewLine)
+            return
         }
-        $summaryPath = Join-Path $sitePath $summaryFileName
-        $group.Group | Export-Csv -Path $summaryPath -NoTypeInformation
-        $outputBox.AppendText("Detailed summary for Site ID $siteId saved to $summaryPath" + [Environment]::NewLine)
-    }
 
-    # Append to master summary CSV in the root folder
-    $masterSummaryPath = Join-Path $PSScriptRoot "Meganexus-Master-Summary.csv"
-    if (Test-Path $masterSummaryPath) {
+        $currentDateTime = Get-Date -Format "ddMMyy-HHmm"
+        $logsFolder = Join-Path $PSScriptRoot "Logs"
+        if (-not (Test-Path $logsFolder)) {
+            $outputBox.AppendText("Creating logs directory at: $logsFolder" + [Environment]::NewLine)
+            New-Item -ItemType Directory -Path $logsFolder -Force | Out-Null
+        }
+
+        $summaryFileName = "AZ-Sync-Summary-$currentDateTime.csv"
+
+        # Group summaries by Site ID
+        $groupedSummaries = $global:currentRunSummaries | Group-Object -Property SiteID
+
+        foreach ($group in $groupedSummaries) {
+            $siteId = $group.Name
+            $sitePath = Join-Path $logsFolder $siteId
+            if (-not (Test-Path $sitePath)) {
+                $outputBox.AppendText("Creating site directory at: $sitePath" + [Environment]::NewLine)
+                New-Item -ItemType Directory -Path $sitePath -Force | Out-Null
+            }
+            $summaryPath = Join-Path $sitePath $summaryFileName
+            $outputBox.AppendText("Saving site summary to: $summaryPath" + [Environment]::NewLine)
+            $group.Group | Export-Csv -Path $summaryPath -NoTypeInformation
+            $outputBox.AppendText("Detailed summary for Site ID $siteId saved to $summaryPath" + [Environment]::NewLine)
+        }
+
+        # Append to master summary CSV in the root folder
+        $masterSummaryPath = Join-Path $PSScriptRoot "Meganexus-Master-Summary.csv"
+        if (-not (Test-Path $masterSummaryPath)) {
+            $outputBox.AppendText("Master summary file does not exist. Creating a new one." + [Environment]::NewLine)
+            $emptyMasterSummary = @"
+SiteID,LogFileName,JobName,JobId,Source,Destination,MigrationType,StartDate,StartTime,EndDate,EndTime,Duration (Mins),TotalFiles,TotalTransfers,FinalJobStatus
+"@
+            $emptyMasterSummary | Out-File -FilePath $masterSummaryPath -Encoding UTF8
+        } else {
+            $outputBox.AppendText("Master summary file exists at $masterSummaryPath" + [Environment]::NewLine)
+        }
+
         $existingMasterSummary = Import-Csv $masterSummaryPath
-    } else {
-        $existingMasterSummary = @()
-    }
+
         $newEntries = @()
-    foreach ($summary in $global:currentRunSummaries) {
-        $summaryWithLogFileName = [PSCustomObject]@{
-            SiteID        = $summary.SiteID
-            LogFileName   = $summaryFileName
-            JobName       = $summary.JobName
-            JobId         = $summary.JobId
-            Source        = $summary.Source
-            Destination   = $summary.Destination
-            MigrationType = $summary.MigrationType
-            StartDate     = $summary.StartDate
-            StartTime     = $summary.StartTime
-            EndDate       = $summary.EndDate
-            EndTime       = $summary.EndTime
-            "Duration (Mins)" = $summary.'Duration (Mins)'
-            TotalFiles    = $summary.TotalFiles
-            TotalTransfers = $summary.TotalTransfers
-            FinalJobStatus = $summary.FinalJobStatus
-        }
-        $jobKey = "$($summary.JobId)-$($summary.StartDate)-$($summary.StartTime)"
-        if (-not ($existingMasterSummary | Where-Object { "$($_.JobId)-$($_.StartDate)-$($_.StartTime)" -eq $jobKey })) {
+        foreach ($summary in $global:currentRunSummaries) {
+            $summaryWithLogFileName = [PSCustomObject]@{
+                SiteID            = $summary.SiteID
+                LogFileName       = $summaryFileName
+                JobName           = $summary.JobName
+                JobId             = $summary.JobId
+                Source            = $summary.Source
+                Destination       = $summary.Destination
+                MigrationType     = $summary.MigrationType
+                StartDate         = $summary.StartDate
+                StartTime         = $summary.StartTime
+                EndDate           = $summary.EndDate
+                EndTime           = $summary.EndTime
+                "Duration (Mins)" = $summary.'Duration (Mins)'
+                TotalFiles        = $summary.TotalFiles
+                TotalTransfers    = $summary.TotalTransfers
+                FinalJobStatus    = $summary.FinalJobStatus
+            }
+
+            # Append entries
             $newEntries += $summaryWithLogFileName
         }
-    }
 
-    if ($newEntries.Count -gt 0) {
-        $newEntries | Export-Csv -Path $masterSummaryPath -NoTypeInformation -Append
-        $outputBox.AppendText("$($newEntries.Count) new entries appended to $masterSummaryPath" + [Environment]::NewLine)
-    } else {
-        $outputBox.AppendText("No new entries to append to master summary." + [Environment]::NewLine)
-    }
+        if ($newEntries.Count -gt 0) {
+            $outputBox.AppendText("Appending $($newEntries.Count) new entries to master summary." + [Environment]::NewLine)
+            $newEntries | Export-Csv -Path $masterSummaryPath -NoTypeInformation -Append
+            $outputBox.AppendText("$($newEntries.Count) new entries appended to $masterSummaryPath" + [Environment]::NewLine)
+        } else {
+            $outputBox.AppendText("No new entries to append to master summary." + [Environment]::NewLine)
+        }
 
-    # Display a brief summary in the output box
-    foreach ($item in $global:currentRunSummaries) {
-        $outputBox.AppendText("Site ID: $($item.SiteID)" + [Environment]::NewLine)
-        $outputBox.AppendText("Job Name: $($item.JobName)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Job ID: $($item.JobId)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Source: $($item.Source)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Destination: $($item.Destination)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Migration Type: $($item.MigrationType)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Start: $($item.StartDate) $($item.StartTime)" + [Environment]::NewLine)
-        $outputBox.AppendText("  End: $($item.EndDate) $($item.EndTime)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Duration (Mins): $($item.'Duration (Mins)')" + [Environment]::NewLine)
-        $outputBox.AppendText("  Files: Total=$($item.TotalFiles), Transferred=$($item.TotalTransfers)" + [Environment]::NewLine)
-        $outputBox.AppendText("  Final Job Status: $($item.FinalJobStatus)" + [Environment]::NewLine)
-        $outputBox.AppendText([Environment]::NewLine)
+        # Display a brief summary in the output box
+        foreach ($item in $global:currentRunSummaries) {
+            $outputBox.AppendText("Site ID: $($item.SiteID)" + [Environment]::NewLine)
+            $outputBox.AppendText("Job Name: $($item.JobName)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Job ID: $($item.JobId)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Source: $($item.Source)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Destination: $($item.Destination)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Migration Type: $($item.MigrationType)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Start: $($item.StartDate) $($item.StartTime)" + [Environment]::NewLine)
+            $outputBox.AppendText("  End: $($item.EndDate) $($item.EndTime)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Duration (Mins): $($item.'Duration (Mins)')" + [Environment]::NewLine)
+            $outputBox.AppendText("  Files: Total=$($item.TotalFiles), Transferred=$($item.TotalTransfers)" + [Environment]::NewLine)
+            $outputBox.AppendText("  Final Job Status: $($item.FinalJobStatus)" + [Environment]::NewLine)
+            $outputBox.AppendText([Environment]::NewLine)
+            if ($item.ErrorMessages) {
+                $outputBox.AppendText("Errors:" + [Environment]::NewLine)
+                foreach ($error in $item.ErrorMessages) {
+                    $outputBox.AppendText("  - $error" + [Environment]::NewLine)
+                }
+            }
+            $outputBox.AppendText("========================================" + [Environment]::NewLine + [Environment]::NewLine)
+            $outputBox.ScrollToCaret()
+        }
+
+        $outputBox.AppendText("Exiting Summarize-Logs function." + [Environment]::NewLine)
+    } catch {
+        $errorMessage = "Error in Summarize-Logs: $_"
+        $outputBox.AppendText($errorMessage + [Environment]::NewLine)
+        [System.Windows.Forms.MessageBox]::Show($errorMessage, "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     }
 }
 
@@ -532,19 +600,19 @@ $viewSummaryButton.Add_Click({
         try {
             # Read the CSV file
             $csvData = Import-Csv $masterSummaryPath
- 
+
             if ($csvData.Count -eq 0) {
                 throw "The CSV file is empty."
             }
- 
+
             # Convert CSV data to DataTable for DataGridView
             $dataTable = New-Object System.Data.DataTable
- 
+
             # Add columns to DataTable based on CSV headers
             foreach ($property in $csvData[0].PSObject.Properties) {
                 $dataTable.Columns.Add($property.Name) | Out-Null
             }
- 
+
             # Add rows to DataTable
             foreach ($row in $csvData) {
                 $dataRow = $dataTable.NewRow()
@@ -553,13 +621,13 @@ $viewSummaryButton.Add_Click({
                 }
                 $dataTable.Rows.Add($dataRow)
             }
- 
+
             # Create a new form for displaying the summary
             $summaryForm = New-Object System.Windows.Forms.Form
             $summaryForm.Text = "PES Master Summary"
             $summaryForm.Size = New-Object System.Drawing.Size(1000,600)
             $summaryForm.StartPosition = "CenterScreen"
- 
+
             # Create a DataGridView to display the summary content
             $dataGridView = New-Object System.Windows.Forms.DataGridView
             $dataGridView.Dock = "Fill"
@@ -569,10 +637,10 @@ $viewSummaryButton.Add_Click({
             $dataGridView.AutoSizeColumnsMode = "Fill"
             $dataGridView.ColumnHeadersHeightSizeMode = "AutoSize"
             $dataGridView.DataSource = $dataTable  # Set DataTable as DataSource
- 
+
             # Add the DataGridView to the form
             $summaryForm.Controls.Add($dataGridView)
- 
+
             # Show the form
             $summaryForm.ShowDialog()
         }
@@ -584,6 +652,8 @@ $viewSummaryButton.Add_Click({
         [System.Windows.Forms.MessageBox]::Show("Master summary file not found: $masterSummaryPath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
     }
 })  # Closing bracket for the Add_Click event handler
+            
+            
 
 $helpButton.Add_Click({
     [System.Windows.Forms.MessageBox]::Show(
@@ -608,7 +678,7 @@ $helpButton.Add_Click({
         "7. Use the 'Cancel' button to stop the current operation." + [Environment]::NewLine +
         "8. The progress bar shows the overall progress of the operation." + [Environment]::NewLine +
         "9. Click 'Exit' to close the application." + [Environment]::NewLine +
-        "10. Verbose logs are saved in the 'Logs/VerboseLogs' subfolder." + [Environment]::NewLine +
+        "10. Verbose logs are saved in the 'Logs\<SiteID>\AZ-VerboseLogs' subfolder." + [Environment]::NewLine +
         "11. A summary log is created as 'Meganexus-Sync-Summary-[DateTime].csv' in the 'Logs' folder." + [Environment]::NewLine +
          "12. A master summary is maintained in 'Meganexus-Master-Summary.csv' in the script directory.",
         "Help"

@@ -1,13 +1,62 @@
-# Set the translation variable (edit this value as needed)
+# --- Configuration ---
 $pathtranslation = "\\storageaccount.files.core.windows.net\staff-personal\"
+$fuzzyThreshold = 0.25
 
-# Add required .NET assemblies for GUI and drawing
+# --- Add required .NET assemblies ---
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-#---------------------------
-# Helper: Import CSV file (with header if needed)
-#---------------------------
+function Get-LevenshteinDistance {
+    param (
+        [string]$s,
+        [string]$t
+    )
+    if ($s.Length -eq 0) { return $t.Length }
+    if ($t.Length -eq 0) { return $s.Length }
+
+    # Dimensions of the matrix
+    $m = $s.Length + 1
+    $n = $t.Length + 1
+    $d = New-Object 'int[,]' $m, $n
+
+    # Initialize the first column and row.
+    for ($i = 0; $i -lt $m; $i++) {
+        $d[$i, 0] = $i
+    }
+    for ($j = 0; $j -lt $n; $j++) {
+        $d[0, $j] = $j
+    }
+
+    # Populate the matrix.
+    for ($i = 1; $i -lt $m; $i++) {
+        for ($j = 1; $j -lt $n; $j++) {
+            if ($s[($i - 1)] -eq $t[($j - 1)]) {
+                $cost = 0
+            }
+            else {
+                $cost = 1
+            }
+            $deleteCost = $d[($i - 1), $j] + 1
+            $insertCost = $d[$i, ($j - 1)] + 1
+            $substituteCost = $d[($i - 1), ($j - 1)] + $cost
+            $d[$i, $j] = [Math]::Min([Math]::Min($deleteCost, $insertCost), $substituteCost)
+        }
+    }
+    return $d[$s.Length, $t.Length]
+}
+
+function Get-Similarity {
+    param (
+        [string]$s,
+        [string]$t
+    )
+    $distance = Get-LevenshteinDistance -s $s -t $t
+    $maxLen = [Math]::Max($s.Length, $t.Length)
+    if ($maxLen -eq 0) { return 1 }
+    return (1 - ($distance / $maxLen))
+}
+
+# --- Helper Functions for Pattern Matching ---
 function Import-UserCsv {
     param (
         [string]$Path
@@ -21,9 +70,6 @@ function Import-UserCsv {
     }
 }
 
-#---------------------------
-# Functions for Pattern Matching (working version)
-#---------------------------
 function Remove-TrailingNumbers {
     param (
         [string]$text
@@ -86,9 +132,7 @@ function IsMatch {
     return $false
 }
 
-#---------------------------
-# Build the GUI
-#---------------------------
+# --- Build the GUI ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Home Drive Mapping"
 $form.Size = New-Object System.Drawing.Size(800,600)
@@ -142,7 +186,7 @@ $textBoxSite.Location = New-Object System.Drawing.Point(140,100)
 $textBoxSite.Size = New-Object System.Drawing.Size(150,20)
 $form.Controls.Add($textBoxSite)
 
-# Checkboxes for extra data (moved down to avoid overlap)
+# Checkboxes for extra data
 $checkBoxFileCount = New-Object System.Windows.Forms.CheckBox
 $checkBoxFileCount.Location = New-Object System.Drawing.Point(140,130)
 $checkBoxFileCount.Size = New-Object System.Drawing.Size(150,20)
@@ -181,9 +225,7 @@ $form.Controls.Add($dataGrid)
 
 $global:results = @()
 
-#---------------------------
-# Event Handlers
-#---------------------------
+# --- Event Handlers ---
 $buttonBrowseCSV.Add_Click({
     $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
     $openFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
@@ -208,7 +250,7 @@ $buttonRun.Add_Click({
     catch { return }
     if (-not (Test-Path $textBoxDir.Text)) { return }
     
-    # Get top-level folders in the selected directory, then get subfolders (assumed home folders) one level deeper.
+    # Get top-level folders, then get subfolders one level deeper (assumed home folders).
     $topFolders = Get-ChildItem -Path $textBoxDir.Text -Directory
     $folderInfoList = @()
     foreach ($topFolder in $topFolders) {
@@ -251,16 +293,15 @@ $buttonRun.Add_Click({
               $localPart = Remove-TrailingNumbers $localPart
               $nameParts = Extract-NameParts $localPart
               
-              # Gather all matching folder records for this user.
+              # Attempt exact pattern matching.
               $matchesForUser = @()
               foreach ($folder in $folderInfoList) {
                    if (IsMatch $folder.FolderName $nameParts) {
-                        # Get relative path: remove the chosen directory part from the folder UNC path.
+                        # Compute relative path from the chosen directory.
                         $basePath = $textBoxDir.Text.Trim()
                         if (-not $basePath.EndsWith("\")) { $basePath += "\" }
                         $relativePath = $folder.UNCPath.Substring($basePath.Length)
                         if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
-                        
                         $siteCode = $textBoxSite.Text.Trim()
                         $newSource = $pathtranslation + $siteCode + "\" + $relativePath
                         
@@ -275,7 +316,48 @@ $buttonRun.Add_Click({
                    }
               }
               
-              if ($matchesForUser.Count -gt 0) {
+              # If no exact match was found, try fuzzy matching.
+              if ($matchesForUser.Count -eq 0) {
+                   $bestMatch = $null
+                   $bestScore = 0
+                   $reference = $localPart.ToLower()
+                   foreach ($folder in $folderInfoList) {
+                        $folderName = $folder.FolderName.Trim().ToLower()
+                        $score = Get-Similarity -s $folderName -t $reference
+                        if ($score -gt $bestScore) {
+                             $bestScore = $score
+                             $bestMatch = $folder
+                        }
+                   }
+                   if ($bestScore -ge $fuzzyThreshold -and $bestMatch -ne $null) {
+                        $basePath = $textBoxDir.Text.Trim()
+                        if (-not $basePath.EndsWith("\")) { $basePath += "\" }
+                        $relativePath = $bestMatch.UNCPath.Substring($basePath.Length)
+                        if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
+                        $siteCode = $textBoxSite.Text.Trim()
+                        $newSource = $pathtranslation + $siteCode + "\" + $relativePath
+                        
+                        $global:results += [PSCustomObject]@{
+                             "Email"       = $email
+                             "Source"      = $newSource
+                             "OneDrive"    = $user.OneDrive
+                             "File Count"  = $bestMatch."File Count"
+                             "Folder Size" = $bestMatch."Folder Size"
+                             "Errors"      = ("Fuzzy Match (score: {0:N2})" -f $bestScore)
+                        }
+                   }
+                   else {
+                        $global:results += [PSCustomObject]@{
+                             "Email"       = $email
+                             "Source"      = ""
+                             "OneDrive"    = $user.OneDrive
+                             "File Count"  = ""
+                             "Folder Size" = ""
+                             "Errors"      = "Home Folder Not Found"
+                        }
+                   }
+              }
+              else {
                    if ($matchesForUser.Count -gt 1) {
                         foreach ($match in $matchesForUser) {
                              $match.Errors = "Duplicate"
@@ -283,20 +365,10 @@ $buttonRun.Add_Click({
                    }
                    $global:results += $matchesForUser
               }
-              else {
-                   $global:results += [PSCustomObject]@{
-                        "Email"       = $email
-                        "Source"      = ""
-                        "OneDrive"    = $user.OneDrive
-                        "File Count"  = ""
-                        "Folder Size" = ""
-                        "Errors"      = "Home Folder Not Found"
-                   }
-              }
          }
     }
     
-    # Build a DataTable for display with headers.
+    # Build a DataTable for display.
     $dt = New-Object System.Data.DataTable
     $dt.Columns.Add("Email") | Out-Null
     $dt.Columns.Add("Source") | Out-Null

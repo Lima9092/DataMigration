@@ -1,29 +1,19 @@
-Add-Type -MemberDefinition @"
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindowAsync(System.IntPtr hWnd, int nCmdShow);
-"@ -Name "Win32" -Namespace "PInvoke"
-
-# SW_MINIMIZE constant is 6 (SW_HIDE would be 0)
-$consoleHandle = (Get-Process -Id $pid).MainWindowHandle
-if ($consoleHandle -ne [IntPtr]::Zero) {
-    [PInvoke.Win32]::ShowWindowAsync($consoleHandle, 6)
-}
+# Set the translation variable (edit this value as needed)
+$pathtranslation = "\\storageaccount.files.core.windows.net\staff-personal\"
 
 # Add required .NET assemblies for GUI and drawing
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-
+#---------------------------
 # Helper: Import CSV file (with header if needed)
-
+#---------------------------
 function Import-UserCsv {
     param (
         [string]$Path
     )
-    # Read the first line to decide if a header exists.
     $firstLine = Get-Content -Path $Path -TotalCount 1
     if ($firstLine -match "@") {
-        # Force header to be UPN and OneDrive (adjust if needed)
         return Import-Csv -Path $Path -Header "UPN","OneDrive"
     }
     else {
@@ -31,10 +21,9 @@ function Import-UserCsv {
     }
 }
 
-
+#---------------------------
 # Functions for Pattern Matching (working version)
-
-# Remove trailing numbers and trim extra spaces (e.g. "john.doe123" becomes "john.doe")
+#---------------------------
 function Remove-TrailingNumbers {
     param (
         [string]$text
@@ -42,7 +31,6 @@ function Remove-TrailingNumbers {
     return ($text.Trim() -replace "\d+$", "")
 }
 
-# Extract name parts from a string assumed to be "FirstName.LastName"
 function Extract-NameParts {
     param (
         [string]$fullName
@@ -71,7 +59,6 @@ function Extract-NameParts {
     }
 }
 
-# Test whether a folder name matches one of the expected patterns derived from the user’s name parts.
 function IsMatch {
     param (
         [string]$folderName,
@@ -83,33 +70,25 @@ function IsMatch {
     $firstInit  = $nameParts.FirstInitial.ToLower()
     $lastInit   = $nameParts.LastInitial.ToLower()
     
-    # Pattern 1: firstInitial.lastName (e.g. "j.doe")
     if ($folderNameLower -eq "$firstInit.$lastName") { return $true }
-    # Pattern 2: firstName.lastName (e.g. "john.doe")
     if ($folderNameLower -eq "$firstName.$lastName") { return $true }
-    # Pattern 3: firstInitiallastName (e.g. "jdoe")
     if ($folderNameLower -eq "$firstInit$lastName") { return $true }
     
-    # Pattern 4: firstInitial followed by 1-4 arbitrary characters then lastName
     for ($i = 1; $i -le 4; $i++) {
          $pattern = "^" + [regex]::Escape($firstInit) + ".{1,$i}" + [regex]::Escape($lastName) + "$"
          if ($folderNameLower -match $pattern) { return $true }
     }
-    # Pattern 5: lastNamefirstInitial (e.g. "doej")
     if ($folderNameLower -eq "$lastName$firstInit") { return $true }
-    # Pattern 6: firstNamelastName (e.g. "johndoe")
     if ($folderNameLower -eq "$firstName$lastName") { return $true }
-    # Pattern 7: lastNamefirstName (e.g. "doejohn")
     if ($folderNameLower -eq "$lastName$firstName") { return $true }
-    # Pattern 8: firstNamelastInitial (e.g. "johnd")
     if ($folderNameLower -eq "$firstName$lastInit") { return $true }
     
     return $false
 }
 
-
+#---------------------------
 # Build the GUI
-
+#---------------------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Home Drive Mapping"
 $form.Size = New-Object System.Drawing.Size(800,600)
@@ -119,7 +98,7 @@ $form.StartPosition = "CenterScreen"
 $labelCSV = New-Object System.Windows.Forms.Label
 $labelCSV.Location = New-Object System.Drawing.Point(10,20)
 $labelCSV.Size = New-Object System.Drawing.Size(120,20)
-$labelCSV.Text = "Select Users CSV File:"
+$labelCSV.Text = "Select CSV File:"
 $form.Controls.Add($labelCSV)
 
 $textBoxCSV = New-Object System.Windows.Forms.TextBox
@@ -137,7 +116,7 @@ $form.Controls.Add($buttonBrowseCSV)
 $labelDir = New-Object System.Windows.Forms.Label
 $labelDir.Location = New-Object System.Drawing.Point(10,60)
 $labelDir.Size = New-Object System.Drawing.Size(120,20)
-$labelDir.Text = "Select Home Directory:"
+$labelDir.Text = "Select Directory:"
 $form.Controls.Add($labelDir)
 
 $textBoxDir = New-Object System.Windows.Forms.TextBox
@@ -151,35 +130,47 @@ $buttonBrowseDir.Size = New-Object System.Drawing.Size(100,24)
 $buttonBrowseDir.Text = "Browse Dir"
 $form.Controls.Add($buttonBrowseDir)
 
-# Checkboxes for extra data
+# Site Code selection (aligned with other text boxes)
+$labelSite = New-Object System.Windows.Forms.Label
+$labelSite.Location = New-Object System.Drawing.Point(10,100)
+$labelSite.Size = New-Object System.Drawing.Size(120,20)
+$labelSite.Text = "Site Code:"
+$form.Controls.Add($labelSite)
+
+$textBoxSite = New-Object System.Windows.Forms.TextBox
+$textBoxSite.Location = New-Object System.Drawing.Point(140,100)
+$textBoxSite.Size = New-Object System.Drawing.Size(150,20)
+$form.Controls.Add($textBoxSite)
+
+# Checkboxes for extra data (moved down to avoid overlap)
 $checkBoxFileCount = New-Object System.Windows.Forms.CheckBox
-$checkBoxFileCount.Location = New-Object System.Drawing.Point(140,100)
+$checkBoxFileCount.Location = New-Object System.Drawing.Point(140,130)
 $checkBoxFileCount.Size = New-Object System.Drawing.Size(150,20)
 $checkBoxFileCount.Text = "Include File Count"
 $form.Controls.Add($checkBoxFileCount)
 
 $checkBoxFolderSize = New-Object System.Windows.Forms.CheckBox
-$checkBoxFolderSize.Location = New-Object System.Drawing.Point(300,100)
+$checkBoxFolderSize.Location = New-Object System.Drawing.Point(300,130)
 $checkBoxFolderSize.Size = New-Object System.Drawing.Size(150,20)
 $checkBoxFolderSize.Text = "Include Folder Size"
 $form.Controls.Add($checkBoxFolderSize)
 
 # Run and Save buttons
 $buttonRun = New-Object System.Windows.Forms.Button
-$buttonRun.Location = New-Object System.Drawing.Point(10,140)
+$buttonRun.Location = New-Object System.Drawing.Point(10,160)
 $buttonRun.Size = New-Object System.Drawing.Size(100,30)
 $buttonRun.Text = "Run"
 $form.Controls.Add($buttonRun)
 
 $buttonSave = New-Object System.Windows.Forms.Button
-$buttonSave.Location = New-Object System.Drawing.Point(120,140)
+$buttonSave.Location = New-Object System.Drawing.Point(120,160)
 $buttonSave.Size = New-Object System.Drawing.Size(100,30)
 $buttonSave.Text = "Save CSV"
 $form.Controls.Add($buttonSave)
 
 # DataGridView for results; bind a DataTable for headers.
 $dataGrid = New-Object System.Windows.Forms.DataGridView
-$dataGrid.Location = New-Object System.Drawing.Point(10,180)
+$dataGrid.Location = New-Object System.Drawing.Point(10,200)
 $dataGrid.Size = New-Object System.Drawing.Size(760,300)
 $dataGrid.AutoSizeColumnsMode = "Fill"
 $dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor `
@@ -190,9 +181,9 @@ $form.Controls.Add($dataGrid)
 
 $global:results = @()
 
-
+#---------------------------
 # Event Handlers
-
+#---------------------------
 $buttonBrowseCSV.Add_Click({
     $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
     $openFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
@@ -217,11 +208,10 @@ $buttonRun.Add_Click({
     catch { return }
     if (-not (Test-Path $textBoxDir.Text)) { return }
     
-    # Get top-level folders in the selected directory.
+    # Get top-level folders in the selected directory, then get subfolders (assumed home folders) one level deeper.
     $topFolders = Get-ChildItem -Path $textBoxDir.Text -Directory
     $folderInfoList = @()
     foreach ($topFolder in $topFolders) {
-         # Recurse one additional level: get subfolders within each top folder.
          $subFolders = Get-ChildItem -Path $topFolder.FullName -Directory
          foreach ($folder in $subFolders) {
               $folderInfo = [PSCustomObject]@{
@@ -265,9 +255,18 @@ $buttonRun.Add_Click({
               $matchesForUser = @()
               foreach ($folder in $folderInfoList) {
                    if (IsMatch $folder.FolderName $nameParts) {
+                        # Get relative path: remove the chosen directory part from the folder UNC path.
+                        $basePath = $textBoxDir.Text.Trim()
+                        if (-not $basePath.EndsWith("\")) { $basePath += "\" }
+                        $relativePath = $folder.UNCPath.Substring($basePath.Length)
+                        if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
+                        
+                        $siteCode = $textBoxSite.Text.Trim()
+                        $newSource = $pathtranslation + $siteCode + "\" + $relativePath
+                        
                         $matchesForUser += [PSCustomObject]@{
                              "Email"       = $email
-                             "Source"      = $folder.UNCPath
+                             "Source"      = $newSource
                              "OneDrive"    = $user.OneDrive
                              "File Count"  = $folder."File Count"
                              "Folder Size" = $folder."Folder Size"
@@ -277,7 +276,6 @@ $buttonRun.Add_Click({
               }
               
               if ($matchesForUser.Count -gt 0) {
-                   # If more than one folder match is found for this user, mark each with "Duplicate".
                    if ($matchesForUser.Count -gt 1) {
                         foreach ($match in $matchesForUser) {
                              $match.Errors = "Duplicate"

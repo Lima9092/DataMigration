@@ -27,12 +27,14 @@ function Load-CSVFile($filePath) {
     }
 }
 
-# Function to replace tokens in a template string using the global variables and the selected site
+# Function to replace tokens in a template string using the global variables and the selected site.
 function ReplaceTokens($template, $siteMetadata) {
+    if ($null -eq $template) { return "" }
     $result = $template
     $result = $result.Replace("<storageAccount>", $GlobalStorageAccount)
     $result = $result.Replace("<studentcontainer>", $GlobalStudentContainer)
     $result = $result.Replace("<staffpersonalshare>", $GlobalStaffPersonalShare)
+    $result = $result.Replace("<SASToken>", $GlobalSASToken)
     $result = $result.Replace("<sitecode>", $siteMetadata.'Site-Code')
     $result = $result.Replace("<sitename>", $siteMetadata.'Site-Name')
     return $result
@@ -74,12 +76,34 @@ $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
 $form.Controls.Add($grid)
 
-# Button to save the grid output as a CSV file
-$btnSave = New-Object System.Windows.Forms.Button
-$btnSave.Location = New-Object System.Drawing.Point(10,520)
-$btnSave.Size = New-Object System.Drawing.Size(200,23)
-$btnSave.Text = "Save Migration Metadata CSV"
-$form.Controls.Add($btnSave)
+# Right-click context menu for "Copy as CSV"
+$contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$menuItemCopyCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
+$contextMenu.Items.Add($menuItemCopyCSV) | Out-Null
+$grid.ContextMenuStrip = $contextMenu
+
+$menuItemCopyCSV.Add_Click({
+    $csvText = ""
+    # Build header row
+    $headers = @()
+    foreach ($col in $grid.Columns) {
+        $headers += $col.HeaderText
+    }
+    $csvText += ($headers -join ",") + "`r`n"
+    # Build each row's CSV line
+    foreach ($row in $grid.Rows) {
+        if (-not $row.IsNewRow) {
+            $cells = @()
+            foreach ($cell in $row.Cells) {
+                $val = $cell.Value
+                if ($val -eq $null) { $val = "" }
+                $cells += $val.ToString()
+            }
+            $csvText += ($cells -join ",") + "`r`n"
+        }
+    }
+    [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
+})
 
 # --- Preload Site Metadata CSV and Populate the Dropdown ---
 if (Test-Path $SiteMetadataCSV) {
@@ -121,9 +145,19 @@ $btnRun.Add_Click({
         return
     }
 
-    # Compute the base legacy path using the selected site's Legacy-Root and Legacy-Share
+    # Get legacy meta data and check for missing values
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
+    if ([string]::IsNullOrEmpty($legacyRoot)) {
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Root for site $selectedSiteName", "Meta Data Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        return
+    }
+    if ([string]::IsNullOrEmpty($legacyShare)) {
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        return
+    }
+
+    # Compute the base legacy path using the selected site's Legacy-Root and Legacy-Share
     $legacyRootTrim = $legacyRoot.TrimEnd("\")
     $legacyShareTrim = $legacyShare.TrimStart("\")
     $basePath = Join-Path $legacyRootTrim $legacyShareTrim
@@ -167,20 +201,14 @@ $btnRun.Add_Click({
 
                     # Replace tokens in the Data Type field
                     $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
-                    if ($dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
+                    if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
                         $name = "$dataTypeReplaced Data"
                     }
                     else {
                         $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
                     }
                     $siteID = $selectedSite.'Site-Code'
-                    $rowIndex = $grid.Rows.Add()
-                    $row = $grid.Rows[$rowIndex]
-                    $row.Cells["SiteID"].Value = $siteID
-                    $row.Cells["Name"].Value = $name
-                    $row.Cells["Source"].Value = $sourcePath
-                    $row.Cells["Destination"].Value = $destination
-                    # Standard destination text now appears in default (black) text
+                    $grid.Rows.Add($siteID, $name, $sourcePath, $destination) | Out-Null
                 }
             }
             else {
@@ -194,34 +222,6 @@ $btnRun.Add_Click({
                 $row.Cells["Destination"].Value = "Non standard share found"
                 $row.Cells["Destination"].Style.ForeColor = [System.Drawing.Color]::Red
             }
-        }
-    }
-})
-
-# --- Save CSV Button Event: Export the Grid Data to a CSV File ---
-$btnSave.Add_Click({
-    $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-    $saveFileDialog.Filter = "CSV Files|*.csv|All Files|*.*"
-    $saveFileDialog.FileName = "Data-Migration-Output.csv"
-    if ($saveFileDialog.ShowDialog() -eq "OK") {
-        $output = @()
-        foreach ($row in $grid.Rows) {
-            if (-not $row.IsNewRow) {
-                $obj = [PSCustomObject]@{
-                    'Site ID'     = $row.Cells["SiteID"].Value
-                    'Name'        = $row.Cells["Name"].Value
-                    'Source'      = $row.Cells["Source"].Value
-                    'Destination' = $row.Cells["Destination"].Value
-                }
-                $output += $obj
-            }
-        }
-        try {
-            $output | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation
-            [System.Windows.Forms.MessageBox]::Show("CSV saved successfully to $($saveFileDialog.FileName)", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
-        }
-        catch {
-            [System.Windows.Forms.MessageBox]::Show("Failed to save CSV.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         }
     }
 })

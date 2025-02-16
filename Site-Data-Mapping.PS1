@@ -101,15 +101,19 @@ $dt.Columns.Add("Destination")   | Out-Null
 $grid.DataSource = $dt.DefaultView
 
 # ------------------------------
-# Highlight rows with errors using your provided format (red text and red background)
-# For this example, we highlight rows where Destination equals "Access Denied"
+# Row PrePaint Event: Highlight rows with errors
 # ------------------------------
 $grid.add_RowPrePaint({
     param($sender, $e)
     $row = $sender.Rows[$e.RowIndex]
-    if ($row.Cells["Destination"].Value -and $row.Cells["Destination"].Value.ToString().Trim() -eq "Access Denied") {
+    $dest = $row.Cells["Destination"].Value
+    if ($dest -and $dest.ToString().Trim() -eq "Access Denied") {
          $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::Red
          $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::Red
+    }
+    elseif ($dest -and $dest.ToString().Trim() -eq "Non standard share found") {
+         $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::Black
+         $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::LightCoral
     }
 })
 
@@ -133,7 +137,8 @@ $menuItemCopyCSV.Add_Click({
         $csvText += ($cells -join ",") + "`r`n"
     }
     if ([string]::IsNullOrEmpty($csvText)) {
-        [System.Windows.Forms.MessageBox]::Show("No rows selected to copy.", "Info", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        [System.Windows.Forms.MessageBox]::Show("No rows selected to copy.", "Info", `
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
     }
     else {
         [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
@@ -204,7 +209,7 @@ $btnRun.Add_Click({
         return
     }
 
-    # List directories in the base path only (do not list subdirectories)
+    # List directories directly in the share folder.
     try {
         $subDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction Stop
     }
@@ -215,44 +220,95 @@ $btnRun.Add_Click({
     }
 
     foreach ($subDir in $subDirs) {
-        $sourcePath = $subDir.FullName
-        # For one-level listing, the relative path is the folder name prefixed with a backslash
-        $relativePath = "\" + $subDir.Name
+        if ($subDir.Name -ieq "Home" -or $subDir.Name -ieq "Shares") {
+            # If folder is "Home" or "Shares", search one level deeper.
+            try {
+                $innerDirs = Get-ChildItem -Path $subDir.FullName -Directory -ErrorAction Stop
+            }
+            catch {
+                $dr = $dt.NewRow()
+                $dr["Site ID"] = $selectedSite.'Site-Code'
+                $dr["Name"] = "$($selectedSite.'Site-Name') Access Denied"
+                $dr["Source"] = $subDir.FullName
+                $dr["Destination"] = "Access Denied"
+                $dt.Rows.Add($dr)
+                continue
+            }
+            foreach ($innerDir in $innerDirs) {
+                $sourcePath = $innerDir.FullName
+                $relativePath = "\" + $subDir.Name + "\" + $innerDir.Name
+                $match = $dataStandards | Where-Object { $_.'Source-Path'.Trim() -eq $relativePath }
+                if ($match) {
+                    foreach ($m in $match) {
+                        $destTemplate = $m.'Destination-Path'
+                        $destination = ReplaceTokens $destTemplate $selectedSite
 
-        $match = $dataStandards | Where-Object { $_.'Source-Path'.Trim() -eq $relativePath }
-        if ($match) {
-            foreach ($m in $match) {
-                $destTemplate = $m.'Destination-Path'
-                $destination = ReplaceTokens $destTemplate $selectedSite
-
-                $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
-                if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
-                    $name = "$dataTypeReplaced Data"
+                        $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
+                        if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
+                            $name = "$dataTypeReplaced Data"
+                        }
+                        else {
+                            $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
+                        }
+                        $siteID = $selectedSite.'Site-Code'
+                        $dr = $dt.NewRow()
+                        $dr["Site ID"] = $siteID
+                        $dr["Name"] = $name
+                        $dr["Source"] = $sourcePath
+                        $dr["Destination"] = $destination
+                        $dt.Rows.Add($dr)
+                    }
                 }
                 else {
-                    $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
+                    $siteID = $selectedSite.'Site-Code'
+                    $name = "$($selectedSite.'Site-Name') Unknown Data"
+                    $dr = $dt.NewRow()
+                    $dr["Site ID"] = $siteID
+                    $dr["Name"] = $name
+                    $dr["Source"] = $sourcePath
+                    $dr["Destination"] = "Non standard share found"
+                    $dt.Rows.Add($dr)
                 }
+            }
+        }
+        else {
+            $sourcePath = $subDir.FullName
+            $relativePath = "\" + $subDir.Name
+            $match = $dataStandards | Where-Object { $_.'Source-Path'.Trim() -eq $relativePath }
+            if ($match) {
+                foreach ($m in $match) {
+                    $destTemplate = $m.'Destination-Path'
+                    $destination = ReplaceTokens $destTemplate $selectedSite
+
+                    $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
+                    if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
+                        $name = "$dataTypeReplaced Data"
+                    }
+                    else {
+                        $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
+                    }
+                    $siteID = $selectedSite.'Site-Code'
+                    $dr = $dt.NewRow()
+                    $dr["Site ID"] = $siteID
+                    $dr["Name"] = $name
+                    $dr["Source"] = $sourcePath
+                    $dr["Destination"] = $destination
+                    $dt.Rows.Add($dr)
+                }
+            }
+            else {
                 $siteID = $selectedSite.'Site-Code'
+                $name = "$($selectedSite.'Site-Name') Unknown Data"
                 $dr = $dt.NewRow()
                 $dr["Site ID"] = $siteID
                 $dr["Name"] = $name
                 $dr["Source"] = $sourcePath
-                $dr["Destination"] = $destination
+                $dr["Destination"] = "Non standard share found"
                 $dt.Rows.Add($dr)
             }
         }
-        else {
-            $siteID = $selectedSite.'Site-Code'
-            $name = "$($selectedSite.'Site-Name') Unknown Data"
-            $dr = $dt.NewRow()
-            $dr["Site ID"] = $siteID
-            $dr["Name"] = $name
-            $dr["Source"] = $sourcePath
-            $dr["Destination"] = "Non standard share found"
-            $dt.Rows.Add($dr)
-        }
     }
-    # Sort the DataTable by Destination (so that errors like "Access Denied" or "Non standard share found" come first if desired)
+    # Sort the DataTable by Destination (or adjust sort as needed)
     $dt.DefaultView.Sort = "Destination ASC"
     $grid.DataSource = $dt.DefaultView
 })

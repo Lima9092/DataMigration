@@ -75,7 +75,7 @@ $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
 $form.Controls.Add($grid)
 
-# Right-click context menu: Copy as CSV
+# Right-click context menu for "Copy as CSV"
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $menuItemCopyCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
 $contextMenu.Items.Add($menuItemCopyCSV) | Out-Null
@@ -103,13 +103,6 @@ $menuItemCopyCSV.Add_Click({
     }
     [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
 })
-
-# Button to save the grid output as a CSV file (retained from baseline)
-$btnSave = New-Object System.Windows.Forms.Button
-$btnSave.Location = New-Object System.Drawing.Point(10,520)
-$btnSave.Size = New-Object System.Drawing.Size(200,23)
-$btnSave.Text = "Save Migration Metadata CSV"
-$form.Controls.Add($btnSave)
 
 # --- Preload Site Metadata CSV and Populate the Dropdown ---
 if (Test-Path $SiteMetadataCSV) {
@@ -237,7 +230,7 @@ $btnRun.Add_Click({
     }
 })
 
-# --- Save CSV Button Event: Export the Grid Data to a CSV File ---
+# --- Save CSV Button Event (retained from baseline) ---
 $btnSave.Add_Click({
     $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
     $saveFileDialog.Filter = "CSV Files|*.csv|All Files|*.*"

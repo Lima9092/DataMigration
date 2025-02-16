@@ -10,24 +10,26 @@ $GlobalStaffPersonalShare   = "staffpersonalshare"
 $DataStandardsCSV = "Data-Standards.csv"
 $SiteMetadataCSV  = "Site-Metadata.csv"
 
-# Load required .NET assemblies for Windows Forms and Drawing
+# ------------------------------
+# Load required .NET assemblies
+# ------------------------------
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# --- Helper Functions ---
-
-# Function to load a CSV file and return its contents
+# ------------------------------
+# Helper Functions
+# ------------------------------
 function Load-CSVFile($filePath) {
     try {
         return Import-Csv -Path $filePath
     }
     catch {
-        [System.Windows.Forms.MessageBox]::Show("Failed to load CSV: $filePath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Failed to load CSV: $filePath", "Error", `
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return $null
     }
 }
 
-# Function to replace tokens in a template string using the global variables and the selected site.
 function ReplaceTokens($template, $siteMetadata) {
     if ($null -eq $template) { return "" }
     $result = $template
@@ -40,43 +42,79 @@ function ReplaceTokens($template, $siteMetadata) {
     return $result
 }
 
-# --- Build the GUI ---
-
-# Create the main form
+# ------------------------------
+# Build the GUI
+# ------------------------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Data Migration Tool"
 $form.Size = New-Object System.Drawing.Size(800,600)
 $form.StartPosition = "CenterScreen"
 
-# Site selection dropdown (populated from Site-Metadata CSV)
+# Top panel for buttons
+$pnlTop = New-Object System.Windows.Forms.Panel
+$pnlTop.Dock = 'Top'
+$pnlTop.Height = 80
+$form.Controls.Add($pnlTop)
+
 $lblSiteSelect = New-Object System.Windows.Forms.Label
 $lblSiteSelect.Location = New-Object System.Drawing.Point(10,10)
 $lblSiteSelect.Size = New-Object System.Drawing.Size(200,20)
 $lblSiteSelect.Text = "Select Site:"
-$form.Controls.Add($lblSiteSelect)
+$pnlTop.Controls.Add($lblSiteSelect)
 
 $cmbSite = New-Object System.Windows.Forms.ComboBox
 $cmbSite.Location = New-Object System.Drawing.Point(10,35)
 $cmbSite.Size = New-Object System.Drawing.Size(300,20)
-$form.Controls.Add($cmbSite)
+$pnlTop.Controls.Add($cmbSite)
 
-# Run button to start processing
 $btnRun = New-Object System.Windows.Forms.Button
-$btnRun.Location = New-Object System.Drawing.Point(10,65)
-$btnRun.Size = New-Object System.Drawing.Size(75,23)
+$btnRun.Location = New-Object System.Drawing.Point(320,30)
+$btnRun.Size = New-Object System.Drawing.Size(75,25)
 $btnRun.Text = "Run"
-$form.Controls.Add($btnRun)
+$pnlTop.Controls.Add($btnRun)
 
-# Data grid to display output in a spreadsheet-like view
+$btnSave = New-Object System.Windows.Forms.Button
+$btnSave.Location = New-Object System.Drawing.Point(410,30)
+$btnSave.Size = New-Object System.Drawing.Size(100,25)
+$btnSave.Text = "Save CSV"
+$pnlTop.Controls.Add($btnSave)
+
+# DataGridView in the remaining area
 $grid = New-Object System.Windows.Forms.DataGridView
-$grid.Location = New-Object System.Drawing.Point(10,100)
-$grid.Size = New-Object System.Drawing.Size(760,400)
+$grid.Location = New-Object System.Drawing.Point(10,90)
+$grid.Size = New-Object System.Drawing.Size(760,460)
+$grid.Anchor = 'Top,Bottom,Left,Right'
 $grid.AutoSizeColumnsMode = "Fill"
 $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
 $form.Controls.Add($grid)
 
-# Right-click context menu for "Copy as CSV"
+# ------------------------------
+# Create a DataTable to serve as grid's data source
+# ------------------------------
+$dt = New-Object System.Data.DataTable
+$dt.Columns.Add("Site ID")   | Out-Null
+$dt.Columns.Add("Name")      | Out-Null
+$dt.Columns.Add("Source")    | Out-Null
+$dt.Columns.Add("Destination") | Out-Null
+$dt.Columns.Add("Errors")    | Out-Null
+
+$grid.DataSource = $dt.DefaultView
+
+# ------------------------------
+# Row PrePaint Event: Highlight rows with errors (non-empty "Errors" cell) in red
+# ------------------------------
+$grid.add_RowPrePaint({
+    param($sender, $e)
+    $row = $sender.Rows[$e.RowIndex]
+    if ($row.Cells["Errors"].Value -and $row.Cells["Errors"].Value.ToString().Trim() -ne "") {
+         $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::Red
+    }
+})
+
+# ------------------------------
+# Right-Click Context Menu: Copy as CSV (selected rows only, without headers)
+# ------------------------------
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $menuItemCopyCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
 $contextMenu.Items.Add($menuItemCopyCSV) | Out-Null
@@ -84,28 +122,22 @@ $grid.ContextMenuStrip = $contextMenu
 
 $menuItemCopyCSV.Add_Click({
     $csvText = ""
-    # Build header row
-    $headers = @()
-    foreach ($col in $grid.Columns) {
-        $headers += $col.HeaderText
-    }
-    $csvText += ($headers -join ",") + "`r`n"
-    # Build each row's CSV line
-    foreach ($row in $grid.Rows) {
-        if (-not $row.IsNewRow) {
-            $cells = @()
-            foreach ($cell in $row.Cells) {
-                $val = $cell.Value
-                if ($val -eq $null) { $val = "" }
-                $cells += $val.ToString()
-            }
-            $csvText += ($cells -join ",") + "`r`n"
+    # Process only selected rows (if none selected, nothing is copied)
+    foreach ($row in $grid.SelectedRows) {
+        $cells = @()
+        foreach ($cell in $row.Cells) {
+            $val = $cell.Value
+            if ($val -eq $null) { $val = "" }
+            $cells += $val.ToString()
         }
+        $csvText += ($cells -join ",") + "`r`n"
     }
     [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
 })
 
-# --- Preload Site Metadata CSV and Populate the Dropdown ---
+# ------------------------------
+# Preload Site Metadata CSV and Populate the Dropdown
+# ------------------------------
 if (Test-Path $SiteMetadataCSV) {
     $sites = Load-CSVFile $SiteMetadataCSV
     if ($sites) {
@@ -116,24 +148,23 @@ if (Test-Path $SiteMetadataCSV) {
     }
 }
 else {
-    [System.Windows.Forms.MessageBox]::Show("Site Metadata CSV not found at: $SiteMetadataCSV", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    [System.Windows.Forms.MessageBox]::Show("Site Metadata CSV not found at: $SiteMetadataCSV", "Error", `
+         [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 }
 
-# --- Setup the Data Grid Columns ---
-$grid.Columns.Add("SiteID", "Site ID") | Out-Null
-$grid.Columns.Add("Name", "Name") | Out-Null
-$grid.Columns.Add("Source", "Source") | Out-Null
-$grid.Columns.Add("Destination", "Destination") | Out-Null
-
-# --- Run Button Event: Process the Data Migration ---
+# ------------------------------
+# Run Button Event: Process the Data Migration
+# ------------------------------
 $btnRun.Add_Click({
-    $grid.Rows.Clear()
+    # Clear previous results
+    $dt.Clear()
 
     $dataStandards = Load-CSVFile $DataStandardsCSV
     $sites = Load-CSVFile $SiteMetadataCSV
 
     if (-not $dataStandards -or -not $sites) {
-        [System.Windows.Forms.MessageBox]::Show("One or more CSV files could not be loaded.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("One or more CSV files could not be loaded.", "Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -141,7 +172,8 @@ $btnRun.Add_Click({
     $selectedSiteName = $cmbSite.SelectedItem
     $selectedSite = $sites | Where-Object { $_.'Site-Name' -eq $selectedSiteName } | Select-Object -First 1
     if (-not $selectedSite) {
-        [System.Windows.Forms.MessageBox]::Show("Selected site not found in Site Metadata.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Selected site not found in Site Metadata.", "Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -149,11 +181,13 @@ $btnRun.Add_Click({
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
     if ([string]::IsNullOrEmpty($legacyRoot)) {
-        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Root for site $selectedSiteName", "Meta Data Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Root for site $selectedSiteName", "Meta Data Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
     if ([string]::IsNullOrEmpty($legacyShare)) {
-        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -163,7 +197,8 @@ $btnRun.Add_Click({
     $basePath = Join-Path $legacyRootTrim $legacyShareTrim
 
     if (-not (Test-Path $basePath)) {
-        [System.Windows.Forms.MessageBox]::Show("Legacy base path $basePath does not exist.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Legacy base path $basePath does not exist.", "Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -172,7 +207,8 @@ $btnRun.Add_Click({
         $firstLevelDirs = Get-ChildItem -Path $basePath -Directory
     }
     catch {
-        [System.Windows.Forms.MessageBox]::Show("Failed to list directories in $basePath.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Failed to list directories in $basePath.", "Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -208,29 +244,60 @@ $btnRun.Add_Click({
                         $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
                     }
                     $siteID = $selectedSite.'Site-Code'
-                    $grid.Rows.Add($siteID, $name, $sourcePath, $destination) | Out-Null
+                    # Add row with no error message
+                    $dr = $dt.NewRow()
+                    $dr["Site ID"] = $siteID
+                    $dr["Name"] = $name
+                    $dr["Source"] = $sourcePath
+                    $dr["Destination"] = $destination
+                    $dr["Errors"] = ""  # no error
+                    $dt.Rows.Add($dr)
                 }
             }
             else {
                 $siteID = $selectedSite.'Site-Code'
                 $name = "$($selectedSite.'Site-Name') Unknown Data"
-                $rowIndex = $grid.Rows.Add()
-                $row = $grid.Rows[$rowIndex]
-                $row.Cells["SiteID"].Value = $siteID
-                $row.Cells["Name"].Value = $name
-                $row.Cells["Source"].Value = $sourcePath
-                $row.Cells["Destination"].Value = "Non standard share found"
-                $row.Cells["Destination"].Style.ForeColor = [System.Drawing.Color]::Red
+                $dr = $dt.NewRow()
+                $dr["Site ID"] = $siteID
+                $dr["Name"] = $name
+                $dr["Source"] = $sourcePath
+                $dr["Destination"] = "Non standard share found"
+                $dr["Errors"] = "Non standard share found"
+                $dt.Rows.Add($dr)
             }
+        }
+    }
+    # Sort the DataTable by Errors ascending
+    $dt.DefaultView.Sort = "Errors ASC"
+    $grid.DataSource = $dt.DefaultView
+})
+
+# ------------------------------
+# Save CSV Button Event: Export the DataTable to CSV
+# ------------------------------
+$btnSave.Add_Click({
+    if ($dt.Rows.Count -eq 0) { return }
+    $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+    $saveFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+    if ($saveFileDialog.ShowDialog() -eq "OK") {
+        try {
+            $dt | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation
+            [System.Windows.Forms.MessageBox]::Show("CSV saved successfully to $($saveFileDialog.FileName)", "Success", `
+                [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+        }
+        catch {
+            [System.Windows.Forms.MessageBox]::Show("Failed to save CSV.", "Error", `
+                [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         }
     }
 })
 
-# --- Handle Form Resize to Adjust Grid Size ---
+# ------------------------------
+# Handle Form Resize to Adjust Grid Size
+# ------------------------------
 $form.Add_Resize({
     $grid.Width = $form.ClientSize.Width - 20
     $grid.Height = $form.ClientSize.Height - 120
 })
 
-# Show the form
 [void]$form.ShowDialog()

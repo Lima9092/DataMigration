@@ -93,15 +93,17 @@ $btnSave.Size = New-Object System.Drawing.Size(100,25)
 $btnSave.Text = "Save CSV"
 $pnlTop.Controls.Add($btnSave)
 
-# DataGridView for displaying results – docked fill to remove gaps
+# DataGridView for displaying results – docked to fill the remaining area
 $grid = New-Object System.Windows.Forms.DataGridView
 $grid.Dock = "Fill"
 $grid.AutoSizeColumnsMode = "Fill"
 $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
-# Set selection mode to full row select, multi-select enabled
+# Ensure full-row selection only
 $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
 $grid.MultiSelect = $true
+# Ensure headers are visible
+$grid.ColumnHeadersVisible = $true
 $form.Controls.Add($grid)
 
 # ------------------------------
@@ -116,7 +118,7 @@ $dt.Columns.Add("Destination")   | Out-Null
 $grid.DataSource = $dt.DefaultView
 
 # ------------------------------
-# Row PrePaint Event: Highlight rows with errors
+# Row PrePaint Event: Highlight rows based on Destination value
 # ------------------------------
 $grid.add_RowPrePaint({
     param($sender, $e)
@@ -236,7 +238,7 @@ $btnRun.Add_Click({
 
     foreach ($subDir in $subDirs) {
         if ($subDir.Name -ieq "Home" -or $subDir.Name -ieq "Shares") {
-            # If folder is "Home" or "Shares", search one level deeper.
+            # Search one level deeper if folder is "Home" or "Shares"
             try {
                 $innerDirs = Get-ChildItem -Path $subDir.FullName -Directory -ErrorAction Stop
             }

@@ -33,6 +33,7 @@ function ReplaceTokens($template, $siteMetadata) {
     $result = $result.Replace("<storageAccount>", $GlobalStorageAccount)
     $result = $result.Replace("<studentcontainer>", $GlobalStudentContainer)
     $result = $result.Replace("<staffpersonalshare>", $GlobalStaffPersonalShare)
+    $result = $result.Replace("<SASToken>", $GlobalSASToken)
     $result = $result.Replace("<sitecode>", $siteMetadata.'Site-Code')
     $result = $result.Replace("<sitename>", $siteMetadata.'Site-Name')
     return $result
@@ -74,7 +75,36 @@ $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
 $form.Controls.Add($grid)
 
-# Button to save the grid output as a CSV file
+# Right-click context menu: Copy as CSV
+$contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$menuItemCopyCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
+$contextMenu.Items.Add($menuItemCopyCSV) | Out-Null
+$grid.ContextMenuStrip = $contextMenu
+
+$menuItemCopyCSV.Add_Click({
+    $csvText = ""
+    # Build header row
+    $headers = @()
+    foreach ($col in $grid.Columns) {
+        $headers += $col.HeaderText
+    }
+    $csvText += ($headers -join ",") + "`r`n"
+    # Build each row's CSV line
+    foreach ($row in $grid.Rows) {
+        if (-not $row.IsNewRow) {
+            $cells = @()
+            foreach ($cell in $row.Cells) {
+                $val = $cell.Value
+                if ($val -eq $null) { $val = "" }
+                $cells += $val.ToString()
+            }
+            $csvText += ($cells -join ",") + "`r`n"
+        }
+    }
+    [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
+})
+
+# Button to save the grid output as a CSV file (retained from baseline)
 $btnSave = New-Object System.Windows.Forms.Button
 $btnSave.Location = New-Object System.Drawing.Point(10,520)
 $btnSave.Size = New-Object System.Drawing.Size(200,23)

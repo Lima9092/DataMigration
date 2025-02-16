@@ -66,8 +66,8 @@ $form.StartPosition = "CenterScreen"
 
 # Top panel for controls
 $pnlTop = New-Object System.Windows.Forms.Panel
-$pnlTop.Dock = 'Top'
-$pnlTop.Height = 80
+$pnlTop.Location = New-Object System.Drawing.Point(10,10)
+$pnlTop.Size = New-Object System.Drawing.Size(780,70)
 $form.Controls.Add($pnlTop)
 
 $lblSiteSelect = New-Object System.Windows.Forms.Label
@@ -93,17 +93,16 @@ $btnSave.Size = New-Object System.Drawing.Size(100,25)
 $btnSave.Text = "Save CSV"
 $pnlTop.Controls.Add($btnSave)
 
-# DataGridView for displaying results – docked to fill the remaining area
+# DataGridView for displaying results (explicit Location/Size so headers remain visible)
 $grid = New-Object System.Windows.Forms.DataGridView
-$grid.Dock = "Fill"
+$grid.Location = New-Object System.Drawing.Point(10,100)
+$grid.Size = New-Object System.Drawing.Size(760,400)
 $grid.AutoSizeColumnsMode = "Fill"
 $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
-# Ensure full-row selection only
+# Set selection mode to full row select
 $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
 $grid.MultiSelect = $true
-# Ensure headers are visible
-$grid.ColumnHeadersVisible = $true
 $form.Controls.Add($grid)
 
 # ------------------------------
@@ -238,7 +237,7 @@ $btnRun.Add_Click({
 
     foreach ($subDir in $subDirs) {
         if ($subDir.Name -ieq "Home" -or $subDir.Name -ieq "Shares") {
-            # Search one level deeper if folder is "Home" or "Shares"
+            # If folder is "Home" or "Shares", search one level deeper.
             try {
                 $innerDirs = Get-ChildItem -Path $subDir.FullName -Directory -ErrorAction Stop
             }
@@ -325,7 +324,6 @@ $btnRun.Add_Click({
             }
         }
     }
-    # Sort the DataTable by Destination (or adjust sort as needed)
     $dt.DefaultView.Sort = "Destination ASC"
     $grid.DataSource = $dt.DefaultView
 })

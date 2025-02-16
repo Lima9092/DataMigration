@@ -50,7 +50,7 @@ $form.Text = "Data Migration Tool"
 $form.Size = New-Object System.Drawing.Size(800,600)
 $form.StartPosition = "CenterScreen"
 
-# Top panel for buttons
+# Top panel for controls
 $pnlTop = New-Object System.Windows.Forms.Panel
 $pnlTop.Dock = 'Top'
 $pnlTop.Height = 80
@@ -79,7 +79,7 @@ $btnSave.Size = New-Object System.Drawing.Size(100,25)
 $btnSave.Text = "Save CSV"
 $pnlTop.Controls.Add($btnSave)
 
-# DataGridView in the remaining area
+# DataGridView for displaying results
 $grid = New-Object System.Windows.Forms.DataGridView
 $grid.Location = New-Object System.Drawing.Point(10,90)
 $grid.Size = New-Object System.Drawing.Size(760,460)
@@ -90,30 +90,31 @@ $grid.AllowUserToAddRows = $false
 $form.Controls.Add($grid)
 
 # ------------------------------
-# Create a DataTable to serve as grid's data source
+# Create a DataTable as the grid's data source
 # ------------------------------
 $dt = New-Object System.Data.DataTable
-$dt.Columns.Add("Site ID")   | Out-Null
-$dt.Columns.Add("Name")      | Out-Null
-$dt.Columns.Add("Source")    | Out-Null
-$dt.Columns.Add("Destination") | Out-Null
-$dt.Columns.Add("Errors")    | Out-Null
+$dt.Columns.Add("Site ID")       | Out-Null
+$dt.Columns.Add("Name")          | Out-Null
+$dt.Columns.Add("Source")        | Out-Null
+$dt.Columns.Add("Destination")   | Out-Null
+$dt.Columns.Add("Errors")        | Out-Null
 
 $grid.DataSource = $dt.DefaultView
 
 # ------------------------------
-# Row PrePaint Event: Highlight rows with errors (non-empty "Errors" cell) in red
+# Row PrePaint Event: Highlight rows with errors (red text and red background)
 # ------------------------------
 $grid.add_RowPrePaint({
     param($sender, $e)
     $row = $sender.Rows[$e.RowIndex]
     if ($row.Cells["Errors"].Value -and $row.Cells["Errors"].Value.ToString().Trim() -ne "") {
          $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::Red
+         $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::Red
     }
 })
 
 # ------------------------------
-# Right-Click Context Menu: Copy as CSV (selected rows only, without headers)
+# Right-Click Context Menu: Copy as CSV (selected rows only, no headers)
 # ------------------------------
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $menuItemCopyCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
@@ -122,7 +123,6 @@ $grid.ContextMenuStrip = $contextMenu
 
 $menuItemCopyCSV.Add_Click({
     $csvText = ""
-    # Process only selected rows (if none selected, nothing is copied)
     foreach ($row in $grid.SelectedRows) {
         $cells = @()
         foreach ($cell in $row.Cells) {
@@ -156,7 +156,6 @@ else {
 # Run Button Event: Process the Data Migration
 # ------------------------------
 $btnRun.Add_Click({
-    # Clear previous results
     $dt.Clear()
 
     $dataStandards = Load-CSVFile $DataStandardsCSV
@@ -168,7 +167,6 @@ $btnRun.Add_Click({
         return
     }
 
-    # Get the selected site record from Site Metadata based on the dropdown selection
     $selectedSiteName = $cmbSite.SelectedItem
     $selectedSite = $sites | Where-Object { $_.'Site-Name' -eq $selectedSiteName } | Select-Object -First 1
     if (-not $selectedSite) {
@@ -177,7 +175,7 @@ $btnRun.Add_Click({
         return
     }
 
-    # Get legacy meta data and check for missing values
+    # Check for required meta data; if Legacy-Share is missing, we use the Legacy-Root as base path.
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
     if ([string]::IsNullOrEmpty($legacyRoot)) {
@@ -185,16 +183,15 @@ $btnRun.Add_Click({
              [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
-    if ([string]::IsNullOrEmpty($legacyShare)) {
-        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error", `
-             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-        return
-    }
-
-    # Compute the base legacy path using the selected site's Legacy-Root and Legacy-Share
     $legacyRootTrim = $legacyRoot.TrimEnd("\")
-    $legacyShareTrim = $legacyShare.TrimStart("\")
-    $basePath = Join-Path $legacyRootTrim $legacyShareTrim
+    if ([string]::IsNullOrEmpty($legacyShare)) {
+         # If Legacy-Share is missing, use Legacy-Root only.
+         $basePath = $legacyRootTrim
+    }
+    else {
+         $legacyShareTrim = $legacyShare.TrimStart("\")
+         $basePath = Join-Path $legacyRootTrim $legacyShareTrim
+    }
 
     if (-not (Test-Path $basePath)) {
         [System.Windows.Forms.MessageBox]::Show("Legacy base path $basePath does not exist.", "Error", `
@@ -202,9 +199,9 @@ $btnRun.Add_Click({
         return
     }
 
-    # List directories two levels deep from the base path
+    # List first-level directories from the base path
     try {
-        $firstLevelDirs = Get-ChildItem -Path $basePath -Directory
+        $firstLevelDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction Stop
     }
     catch {
         [System.Windows.Forms.MessageBox]::Show("Failed to list directories in $basePath.", "Error", `
@@ -213,29 +210,32 @@ $btnRun.Add_Click({
     }
 
     foreach ($dir in $firstLevelDirs) {
+        # Try to list second-level directories; capture "Access Denied" errors
         try {
-            $secondLevelDirs = Get-ChildItem -Path $dir.FullName -Directory
+            $secondLevelDirs = Get-ChildItem -Path $dir.FullName -Directory -ErrorAction Stop
         }
         catch {
+            $dr = $dt.NewRow()
+            $dr["Site ID"] = $selectedSite.'Site-Code'
+            $dr["Name"] = "$($selectedSite.'Site-Name') Access Denied"
+            $dr["Source"] = $dir.FullName
+            $dr["Destination"] = "Access Denied"
+            $dr["Errors"] = "Access Denied"
+            $dt.Rows.Add($dr)
             continue
         }
         foreach ($subDir in $secondLevelDirs) {
             $sourcePath = $subDir.FullName
-            # Extract the relative path (e.g. "\home\students") from the base path
             $relativePath = $sourcePath.Substring($basePath.Length)
-            if ($relativePath -notlike "\*") {
-                $relativePath = "\" + $relativePath
-            }
+            if ($relativePath -notlike "\*") { $relativePath = "\" + $relativePath }
             $relativePath = $relativePath.TrimEnd("\")
 
-            # Attempt an exact match against the Data Standards mapping Source-Path
             $match = $dataStandards | Where-Object { $_.'Source-Path'.Trim() -eq $relativePath }
             if ($match) {
                 foreach ($m in $match) {
                     $destTemplate = $m.'Destination-Path'
                     $destination = ReplaceTokens $destTemplate $selectedSite
 
-                    # Replace tokens in the Data Type field
                     $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
                     if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
                         $name = "$dataTypeReplaced Data"
@@ -244,13 +244,12 @@ $btnRun.Add_Click({
                         $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
                     }
                     $siteID = $selectedSite.'Site-Code'
-                    # Add row with no error message
                     $dr = $dt.NewRow()
                     $dr["Site ID"] = $siteID
                     $dr["Name"] = $name
                     $dr["Source"] = $sourcePath
                     $dr["Destination"] = $destination
-                    $dr["Errors"] = ""  # no error
+                    $dr["Errors"] = ""
                     $dt.Rows.Add($dr)
                 }
             }
@@ -267,7 +266,7 @@ $btnRun.Add_Click({
             }
         }
     }
-    # Sort the DataTable by Errors ascending
+    # Sort the DataTable by Errors ascending and update the grid
     $dt.DefaultView.Sort = "Errors ASC"
     $grid.DataSource = $dt.DefaultView
 })
@@ -280,15 +279,15 @@ $btnSave.Add_Click({
     $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
     $saveFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
     if ($saveFileDialog.ShowDialog() -eq "OK") {
-        try {
-            $dt | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation
-            [System.Windows.Forms.MessageBox]::Show("CSV saved successfully to $($saveFileDialog.FileName)", "Success", `
-                [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
-        }
-        catch {
-            [System.Windows.Forms.MessageBox]::Show("Failed to save CSV.", "Error", `
-                [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-        }
+         try {
+              $dt | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation
+              [System.Windows.Forms.MessageBox]::Show("CSV saved successfully to $($saveFileDialog.FileName)", "Success", `
+                  [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+         }
+         catch {
+              [System.Windows.Forms.MessageBox]::Show("Failed to save CSV.", "Error", `
+                  [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+         }
     }
 })
 

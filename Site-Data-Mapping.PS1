@@ -93,19 +93,15 @@ $btnSave.Size = New-Object System.Drawing.Size(100,25)
 $btnSave.Text = "Save CSV"
 $pnlTop.Controls.Add($btnSave)
 
-# DataGridView for displaying results
+# DataGridView for displaying results – docked fill to remove gaps
 $grid = New-Object System.Windows.Forms.DataGridView
-$grid.Location = New-Object System.Drawing.Point(10,90)
-$grid.Size = New-Object System.Drawing.Size(760,460)
-$grid.Anchor = 'Top,Bottom,Left,Right'
+$grid.Dock = "Fill"
 $grid.AutoSizeColumnsMode = "Fill"
 $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
-
-# Set selection mode to full row select and allow multi-select.
+# Set selection mode to full row select, multi-select enabled
 $grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
 $grid.MultiSelect = $true
-
 $form.Controls.Add($grid)
 
 # ------------------------------

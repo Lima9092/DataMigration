@@ -90,24 +90,24 @@ $grid.AllowUserToAddRows = $false
 $form.Controls.Add($grid)
 
 # ------------------------------
-# Create a DataTable as the grid's data source
+# Create a DataTable as the grid's data source (without an Errors column)
 # ------------------------------
 $dt = New-Object System.Data.DataTable
 $dt.Columns.Add("Site ID")       | Out-Null
 $dt.Columns.Add("Name")          | Out-Null
 $dt.Columns.Add("Source")        | Out-Null
 $dt.Columns.Add("Destination")   | Out-Null
-$dt.Columns.Add("Errors")        | Out-Null
 
 $grid.DataSource = $dt.DefaultView
 
 # ------------------------------
-# Row PrePaint Event: Highlight rows with errors (red text and red background)
+# (Optional) You can remove row highlighting since no Errors column exists.
 # ------------------------------
+# (If you still want highlighting for "Access Denied" rows, we could check if Destination equals "Access Denied".)
 $grid.add_RowPrePaint({
     param($sender, $e)
     $row = $sender.Rows[$e.RowIndex]
-    if ($row.Cells["Errors"].Value -and $row.Cells["Errors"].Value.ToString().Trim() -ne "") {
+    if ($row.Cells["Destination"].Value -and $row.Cells["Destination"].Value.ToString().Trim() -eq "Access Denied") {
          $row.DefaultCellStyle.ForeColor = [System.Drawing.Color]::Red
          $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::Red
     }
@@ -132,7 +132,12 @@ $menuItemCopyCSV.Add_Click({
         }
         $csvText += ($cells -join ",") + "`r`n"
     }
-    [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
+    if ([string]::IsNullOrEmpty($csvText)) {
+        [System.Windows.Forms.MessageBox]::Show("No rows selected to copy.", "Info", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+    }
+    else {
+        [System.Windows.Forms.Clipboard]::SetText($csvText, 'Text')
+    }
 })
 
 # ------------------------------
@@ -175,7 +180,7 @@ $btnRun.Add_Click({
         return
     }
 
-    # Check for required meta data; if Legacy-Share is missing, we use the Legacy-Root as base path.
+    # Check for required meta data; if Legacy-Share is missing, use Legacy-Root only.
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
     if ([string]::IsNullOrEmpty($legacyRoot)) {
@@ -185,7 +190,6 @@ $btnRun.Add_Click({
     }
     $legacyRootTrim = $legacyRoot.TrimEnd("\")
     if ([string]::IsNullOrEmpty($legacyShare)) {
-         # If Legacy-Share is missing, use Legacy-Root only.
          $basePath = $legacyRootTrim
     }
     else {
@@ -199,7 +203,6 @@ $btnRun.Add_Click({
         return
     }
 
-    # List first-level directories from the base path
     try {
         $firstLevelDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction Stop
     }
@@ -210,7 +213,6 @@ $btnRun.Add_Click({
     }
 
     foreach ($dir in $firstLevelDirs) {
-        # Try to list second-level directories; capture "Access Denied" errors
         try {
             $secondLevelDirs = Get-ChildItem -Path $dir.FullName -Directory -ErrorAction Stop
         }
@@ -220,7 +222,6 @@ $btnRun.Add_Click({
             $dr["Name"] = "$($selectedSite.'Site-Name') Access Denied"
             $dr["Source"] = $dir.FullName
             $dr["Destination"] = "Access Denied"
-            $dr["Errors"] = "Access Denied"
             $dt.Rows.Add($dr)
             continue
         }
@@ -249,7 +250,6 @@ $btnRun.Add_Click({
                     $dr["Name"] = $name
                     $dr["Source"] = $sourcePath
                     $dr["Destination"] = $destination
-                    $dr["Errors"] = ""
                     $dt.Rows.Add($dr)
                 }
             }
@@ -261,13 +261,11 @@ $btnRun.Add_Click({
                 $dr["Name"] = $name
                 $dr["Source"] = $sourcePath
                 $dr["Destination"] = "Non standard share found"
-                $dr["Errors"] = "Non standard share found"
                 $dt.Rows.Add($dr)
             }
         }
     }
-    # Sort the DataTable by Errors ascending and update the grid
-    $dt.DefaultView.Sort = "Errors ASC"
+    $dt.DefaultView.Sort = "Destination ASC"
     $grid.DataSource = $dt.DefaultView
 })
 

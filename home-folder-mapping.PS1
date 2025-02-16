@@ -13,29 +13,18 @@ function Get-LevenshteinDistance {
     )
     if ($s.Length -eq 0) { return $t.Length }
     if ($t.Length -eq 0) { return $s.Length }
-
-    # Dimensions of the matrix
     $m = $s.Length + 1
     $n = $t.Length + 1
     $d = New-Object 'int[,]' $m, $n
-
-    # Initialize the first column and row.
     for ($i = 0; $i -lt $m; $i++) {
         $d[$i, 0] = $i
     }
     for ($j = 0; $j -lt $n; $j++) {
         $d[0, $j] = $j
     }
-
-    # Populate the matrix.
     for ($i = 1; $i -lt $m; $i++) {
         for ($j = 1; $j -lt $n; $j++) {
-            if ($s[($i - 1)] -eq $t[($j - 1)]) {
-                $cost = 0
-            }
-            else {
-                $cost = 1
-            }
+            if ($s[($i - 1)] -eq $t[($j - 1)]) { $cost = 0 } else { $cost = 1 }
             $deleteCost = $d[($i - 1), $j] + 1
             $insertCost = $d[$i, ($j - 1)] + 1
             $substituteCost = $d[($i - 1), ($j - 1)] + $cost
@@ -77,6 +66,7 @@ function Remove-TrailingNumbers {
     return ($text.Trim() -replace "\d+$", "")
 }
 
+# This function splits the username and returns name parts
 function Extract-NameParts {
     param (
         [string]$fullName
@@ -105,122 +95,152 @@ function Extract-NameParts {
     }
 }
 
+# Normalizes folder names (removes spaces) and checks against expected name parts.
 function IsMatch {
     param (
         [string]$folderName,
         [hashtable]$nameParts
     )
-    $folderNameLower = $folderName.Trim().ToLower()
+    $folderNameNormalized = ($folderName.Trim().ToLower()) -replace "\s+", ""
     $firstName  = $nameParts.FirstName.ToLower()
     $lastName   = $nameParts.LastName.ToLower()
     $firstInit  = $nameParts.FirstInitial.ToLower()
     $lastInit   = $nameParts.LastInitial.ToLower()
     
-    if ($folderNameLower -eq "$firstInit.$lastName") { return $true }
-    if ($folderNameLower -eq "$firstName.$lastName") { return $true }
-    if ($folderNameLower -eq "$firstInit$lastName") { return $true }
-    
+    if ($folderNameNormalized -eq "$firstInit$lastName") { return $true }
+    if ($folderNameNormalized -eq "$firstName$lastName") { return $true }
+    if ($folderNameNormalized -eq "$lastName$firstName") { return $true }
+    if ($folderNameNormalized -eq "$firstInit.$lastName") { return $true }
+    if ($folderNameNormalized -eq "$firstName.$lastName") { return $true }
     for ($i = 1; $i -le 4; $i++) {
          $pattern = "^" + [regex]::Escape($firstInit) + ".{1,$i}" + [regex]::Escape($lastName) + "$"
-         if ($folderNameLower -match $pattern) { return $true }
+         if ($folderNameNormalized -match $pattern) { return $true }
     }
-    if ($folderNameLower -eq "$lastName$firstInit") { return $true }
-    if ($folderNameLower -eq "$firstName$lastName") { return $true }
-    if ($folderNameLower -eq "$lastName$firstName") { return $true }
-    if ($folderNameLower -eq "$firstName$lastInit") { return $true }
-    
+    if ($folderNameNormalized -eq "$lastName$firstInit") { return $true }
+    if ($folderNameNormalized -eq "$firstName$lastInit") { return $true }
     return $false
 }
 
 # --- Build the GUI ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Home Drive Mapping"
-$form.Size = New-Object System.Drawing.Size(800,600)
+$form.Size = New-Object System.Drawing.Size(800,680)
 $form.StartPosition = "CenterScreen"
 
-# CSV file selection
+# --- Site Metadata DropDown ---
+$labelSelectSite = New-Object System.Windows.Forms.Label
+$labelSelectSite.Location = New-Object System.Drawing.Point(10,20)
+$labelSelectSite.Size = New-Object System.Drawing.Size(120,20)
+$labelSelectSite.Text = "Select Site:"
+$form.Controls.Add($labelSelectSite)
+
+$comboBoxSite = New-Object System.Windows.Forms.ComboBox
+$comboBoxSite.Location = New-Object System.Drawing.Point(140,20)
+$comboBoxSite.Size = New-Object System.Drawing.Size(250,20)
+$comboBoxSite.DropDownStyle = 'DropDownList'
+$form.Controls.Add($comboBoxSite)
+
+# Global variables for site metadata and selection
+$global:siteMetadata = @()
+$global:selectedSite = $null
+$global:knownHomes = ""
+
+# Load site-metadata.csv from the script's root folder.
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$metadataPath = Join-Path $scriptDir "site-metadata.csv"
+if (Test-Path $metadataPath) {
+    $global:siteMetadata = Import-Csv -Path $metadataPath
+    foreach ($site in $global:siteMetadata) {
+        $comboBoxSite.Items.Add($site.'Site-Name') | Out-Null
+    }
+}
+else {
+    [System.Windows.Forms.MessageBox]::Show("site-metadata.csv not found in $scriptDir","Error","OK","Error")
+}
+
+# When a site is selected, prepopulate the directory textbox and store the selected site info.
+$comboBoxSite.Add_SelectedIndexChanged({
+    $selectedSiteName = $comboBoxSite.SelectedItem
+    $matchSite = $global:siteMetadata | Where-Object { $_."Site-Name" -eq $selectedSiteName }
+    if ($matchSite) {
+        $global:selectedSite = $matchSite
+        $legacyRoot = $matchSite.'Legacy-Root'
+        $legacyShare = $matchSite.'Legacy-Share'
+        if (-not $legacyRoot.EndsWith("\")) { $legacyRoot += "\" }
+        $basePath = ($legacyRoot.TrimEnd("\") + $legacyShare).Replace("\\\\", "\")
+        $textBoxDir.Text = $basePath
+        $global:knownHomes = $matchSite.'Known-Homes'
+    }
+})
+
+# --- CSV file selection ---
 $labelCSV = New-Object System.Windows.Forms.Label
-$labelCSV.Location = New-Object System.Drawing.Point(10,20)
+$labelCSV.Location = New-Object System.Drawing.Point(10,60)
 $labelCSV.Size = New-Object System.Drawing.Size(120,20)
 $labelCSV.Text = "Select CSV File:"
 $form.Controls.Add($labelCSV)
 
 $textBoxCSV = New-Object System.Windows.Forms.TextBox
-$textBoxCSV.Location = New-Object System.Drawing.Point(140,20)
+$textBoxCSV.Location = New-Object System.Drawing.Point(140,60)
 $textBoxCSV.Size = New-Object System.Drawing.Size(500,20)
 $form.Controls.Add($textBoxCSV)
 
 $buttonBrowseCSV = New-Object System.Windows.Forms.Button
-$buttonBrowseCSV.Location = New-Object System.Drawing.Point(650,18)
+$buttonBrowseCSV.Location = New-Object System.Drawing.Point(650,58)
 $buttonBrowseCSV.Size = New-Object System.Drawing.Size(100,24)
 $buttonBrowseCSV.Text = "Browse CSV"
 $form.Controls.Add($buttonBrowseCSV)
 
-# Directory selection
+# --- Directory selection ---
 $labelDir = New-Object System.Windows.Forms.Label
-$labelDir.Location = New-Object System.Drawing.Point(10,60)
+$labelDir.Location = New-Object System.Drawing.Point(10,100)
 $labelDir.Size = New-Object System.Drawing.Size(120,20)
 $labelDir.Text = "Select Directory:"
 $form.Controls.Add($labelDir)
 
 $textBoxDir = New-Object System.Windows.Forms.TextBox
-$textBoxDir.Location = New-Object System.Drawing.Point(140,60)
+$textBoxDir.Location = New-Object System.Drawing.Point(140,100)
 $textBoxDir.Size = New-Object System.Drawing.Size(500,20)
 $form.Controls.Add($textBoxDir)
 
 $buttonBrowseDir = New-Object System.Windows.Forms.Button
-$buttonBrowseDir.Location = New-Object System.Drawing.Point(650,58)
+$buttonBrowseDir.Location = New-Object System.Drawing.Point(650,98)
 $buttonBrowseDir.Size = New-Object System.Drawing.Size(100,24)
 $buttonBrowseDir.Text = "Browse Dir"
 $form.Controls.Add($buttonBrowseDir)
 
-# Site Code selection (aligned with other text boxes)
-$labelSite = New-Object System.Windows.Forms.Label
-$labelSite.Location = New-Object System.Drawing.Point(10,100)
-$labelSite.Size = New-Object System.Drawing.Size(120,20)
-$labelSite.Text = "Site Code:"
-$form.Controls.Add($labelSite)
-
-$textBoxSite = New-Object System.Windows.Forms.TextBox
-$textBoxSite.Location = New-Object System.Drawing.Point(140,100)
-$textBoxSite.Size = New-Object System.Drawing.Size(150,20)
-$form.Controls.Add($textBoxSite)
-
-# Checkboxes for extra data
+# --- Checkboxes for extra data ---
 $checkBoxFileCount = New-Object System.Windows.Forms.CheckBox
-$checkBoxFileCount.Location = New-Object System.Drawing.Point(140,130)
+$checkBoxFileCount.Location = New-Object System.Drawing.Point(140,140)
 $checkBoxFileCount.Size = New-Object System.Drawing.Size(150,20)
 $checkBoxFileCount.Text = "Include File Count"
 $form.Controls.Add($checkBoxFileCount)
 
 $checkBoxFolderSize = New-Object System.Windows.Forms.CheckBox
-$checkBoxFolderSize.Location = New-Object System.Drawing.Point(300,130)
+$checkBoxFolderSize.Location = New-Object System.Drawing.Point(300,140)
 $checkBoxFolderSize.Size = New-Object System.Drawing.Size(150,20)
 $checkBoxFolderSize.Text = "Include Folder Size"
 $form.Controls.Add($checkBoxFolderSize)
 
-# Run and Save buttons
+# --- Run and Save buttons ---
 $buttonRun = New-Object System.Windows.Forms.Button
-$buttonRun.Location = New-Object System.Drawing.Point(10,160)
+$buttonRun.Location = New-Object System.Drawing.Point(10,180)
 $buttonRun.Size = New-Object System.Drawing.Size(100,30)
 $buttonRun.Text = "Run"
 $form.Controls.Add($buttonRun)
 
 $buttonSave = New-Object System.Windows.Forms.Button
-$buttonSave.Location = New-Object System.Drawing.Point(120,160)
+$buttonSave.Location = New-Object System.Drawing.Point(120,180)
 $buttonSave.Size = New-Object System.Drawing.Size(100,30)
 $buttonSave.Text = "Save CSV"
 $form.Controls.Add($buttonSave)
 
-# DataGridView for results; bind a DataTable for headers.
+# --- DataGridView for results ---
 $dataGrid = New-Object System.Windows.Forms.DataGridView
-$dataGrid.Location = New-Object System.Drawing.Point(10,200)
-$dataGrid.Size = New-Object System.Drawing.Size(760,300)
+$dataGrid.Location = New-Object System.Drawing.Point(10,220)
+$dataGrid.Size = New-Object System.Drawing.Size(760,380)
 $dataGrid.AutoSizeColumnsMode = "Fill"
-$dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor `
-                     [System.Windows.Forms.AnchorStyles]::Bottom -bor `
-                     [System.Windows.Forms.AnchorStyles]::Left -bor `
-                     [System.Windows.Forms.AnchorStyles]::Right
+$dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
 $form.Controls.Add($dataGrid)
 
 $global:results = @()
@@ -250,38 +270,36 @@ $buttonRun.Add_Click({
     catch { return }
     if (-not (Test-Path $textBoxDir.Text)) { return }
     
-    # Get top-level folders, then get subfolders one level deeper (assumed home folders).
-    $topFolders = Get-ChildItem -Path $textBoxDir.Text -Directory
+    # Build folder list without expensive file counting
     $folderInfoList = @()
-    foreach ($topFolder in $topFolders) {
-         $subFolders = Get-ChildItem -Path $topFolder.FullName -Directory
-         foreach ($folder in $subFolders) {
-              $folderInfo = [PSCustomObject]@{
-                   FolderName    = $folder.Name
-                   UNCPath       = $folder.FullName
-                   "File Count"  = $null
-                   "Folder Size" = $null
-              }
-              if ($checkBoxFileCount.Checked) {
-                   try {
-                        $files = Get-ChildItem -Path $folder.FullName -Recurse -File -ErrorAction SilentlyContinue
-                        $folderInfo."File Count" = $files.Count
-                   }
-                   catch {
-                        $folderInfo."File Count" = "Error"
-                   }
-              }
-              if ($checkBoxFolderSize.Checked) {
-                   try {
-                        $files = Get-ChildItem -Path $folder.FullName -Recurse -File -ErrorAction SilentlyContinue
-                        $sizeBytes = ($files | Measure-Object -Property Length -Sum).Sum
-                        $folderInfo."Folder Size" = [math]::Round($sizeBytes / 1MB, 2)
-                   }
-                   catch {
-                        $folderInfo."Folder Size" = "Error"
-                   }
-              }
-              $folderInfoList += $folderInfo
+    if ($global:knownHomes -and $global:knownHomes.Trim() -ne "") {
+         $knownHomesList = $global:knownHomes.Split(";") | ForEach-Object { $_.Trim() }
+         foreach ($homeFolder in $knownHomesList) {
+             $homePath = Join-Path $textBoxDir.Text $homeFolder
+             if (Test-Path $homePath) {
+                 $folders = Get-ChildItem -Path $homePath -Directory -Recurse -ErrorAction SilentlyContinue
+                 foreach ($folder in $folders) {
+                     $folderInfo = [PSCustomObject]@{
+                         FolderName    = $folder.Name
+                         UNCPath       = $folder.FullName
+                         "File Count"  = $null
+                         "Folder Size" = $null
+                     }
+                     $folderInfoList += $folderInfo
+                 }
+             }
+         }
+    }
+    else {
+         $folders = Get-ChildItem -Path $textBoxDir.Text -Directory -ErrorAction SilentlyContinue
+         foreach ($folder in $folders) {
+             $folderInfo = [PSCustomObject]@{
+                 FolderName    = $folder.Name
+                 UNCPath       = $folder.FullName
+                 "File Count"  = $null
+                 "Folder Size" = $null
+             }
+             $folderInfoList += $folderInfo
          }
     }
     
@@ -297,20 +315,20 @@ $buttonRun.Add_Click({
               $matchesForUser = @()
               foreach ($folder in $folderInfoList) {
                    if (IsMatch $folder.FolderName $nameParts) {
-                        # Compute relative path from the chosen directory.
                         $basePath = $textBoxDir.Text.Trim()
                         if (-not $basePath.EndsWith("\")) { $basePath += "\" }
                         $relativePath = $folder.UNCPath.Substring($basePath.Length)
                         if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
-                        $siteCode = $textBoxSite.Text.Trim()
+                        $siteCode = ($global:selectedSite.'Site-Code').Trim()
                         $newSource = $pathtranslation + $siteCode + "\" + $relativePath
                         
                         $matchesForUser += [PSCustomObject]@{
                              "Email"       = $email
                              "Source"      = $newSource
                              "OneDrive"    = $user.OneDrive
-                             "File Count"  = $folder."File Count"
-                             "Folder Size" = $folder."Folder Size"
+                             "UNCPath"     = $folder.UNCPath
+                             "File Count"  = $null
+                             "Folder Size" = $null
                              "Errors"      = ""
                         }
                    }
@@ -322,7 +340,7 @@ $buttonRun.Add_Click({
                    $bestScore = 0
                    $reference = $localPart.ToLower()
                    foreach ($folder in $folderInfoList) {
-                        $folderName = $folder.FolderName.Trim().ToLower()
+                        $folderName = ($folder.FolderName.Trim().ToLower()) -replace "\s+", ""
                         $score = Get-Similarity -s $folderName -t $reference
                         if ($score -gt $bestScore) {
                              $bestScore = $score
@@ -334,15 +352,16 @@ $buttonRun.Add_Click({
                         if (-not $basePath.EndsWith("\")) { $basePath += "\" }
                         $relativePath = $bestMatch.UNCPath.Substring($basePath.Length)
                         if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
-                        $siteCode = $textBoxSite.Text.Trim()
+                        $siteCode = ($global:selectedSite.'Site-Code').Trim()
                         $newSource = $pathtranslation + $siteCode + "\" + $relativePath
                         
                         $global:results += [PSCustomObject]@{
                              "Email"       = $email
                              "Source"      = $newSource
                              "OneDrive"    = $user.OneDrive
-                             "File Count"  = $bestMatch."File Count"
-                             "Folder Size" = $bestMatch."Folder Size"
+                             "UNCPath"     = $bestMatch.UNCPath
+                             "File Count"  = $null
+                             "Folder Size" = $null
                              "Errors"      = ("Fuzzy Match (score: {0:N2})" -f $bestScore)
                         }
                    }
@@ -351,6 +370,7 @@ $buttonRun.Add_Click({
                              "Email"       = $email
                              "Source"      = ""
                              "OneDrive"    = $user.OneDrive
+                             "UNCPath"     = ""
                              "File Count"  = ""
                              "Folder Size" = ""
                              "Errors"      = "Home Folder Not Found"
@@ -364,6 +384,31 @@ $buttonRun.Add_Click({
                         }
                    }
                    $global:results += $matchesForUser
+              }
+         }
+    }
+    
+    # Now, only compute file count and folder size for duplicates.
+    foreach ($result in $global:results) {
+         if ($result.Errors -and $result.Errors -like "*Duplicate*") {
+              if ($checkBoxFileCount.Checked -and $result.UNCPath) {
+                   try {
+                       $files = Get-ChildItem -Path $result.UNCPath -Recurse -File -ErrorAction SilentlyContinue
+                       $result."File Count" = $files.Count
+                   }
+                   catch {
+                       $result."File Count" = "Error"
+                   }
+              }
+              if ($checkBoxFolderSize.Checked -and $result.UNCPath) {
+                   try {
+                       $files = Get-ChildItem -Path $result.UNCPath -Recurse -File -ErrorAction SilentlyContinue
+                       $sizeBytes = ($files | Measure-Object -Property Length -Sum).Sum
+                       $result."Folder Size" = [math]::Round($sizeBytes / 1MB, 2)
+                   }
+                   catch {
+                       $result."Folder Size" = "Error"
+                   }
               }
          }
     }
@@ -401,6 +446,15 @@ $buttonSave.Add_Click({
               $global:results | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation
          }
          catch { }
+    }
+})
+
+# Highlight duplicate rows if file count/folder size options are enabled.
+$dataGrid.add_RowPrePaint({
+    param($sender, $e)
+    $row = $sender.Rows[$e.RowIndex]
+    if ($row.Cells["Errors"].Value -and $row.Cells["Errors"].Value.ToString().Contains("Duplicate") -and ($checkBoxFileCount.Checked -or $checkBoxFolderSize.Checked)) {
+        $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::LightYellow
     }
 })
 

@@ -66,7 +66,7 @@ function Remove-TrailingNumbers {
     return ($text.Trim() -replace "\d+$", "")
 }
 
-# This function splits the username and returns name parts.
+# This function splits the username and returns name parts
 function Extract-NameParts {
     param (
         [string]$fullName
@@ -270,54 +270,44 @@ $buttonRun.Add_Click({
     catch { return }
     if (-not (Test-Path $textBoxDir.Text)) { return }
     
-    # Define base directory (ensure trailing backslash)
-    $baseDir = $textBoxDir.Text.Trim()
-    if (-not $baseDir.EndsWith("\")) { $baseDir += "\" }
-    
-    # Build folder list without expensive file counting using a three-level scan.
+    # Build folder list without expensive file counting
     $folderInfoList = @()
     if ($global:knownHomes -and $global:knownHomes.Trim() -ne "") {
-         # For each known home folder (e.g. "Home\Partners")
          $knownHomesList = $global:knownHomes.Split(";") | ForEach-Object { $_.Trim() }
          foreach ($homeFolder in $knownHomesList) {
-             $homePath = Join-Path $baseDir $homeFolder
+             $homePath = Join-Path $textBoxDir.Text $homeFolder
              if (Test-Path $homePath) {
-                 $level1 = Get-ChildItem -Path $homePath -Directory -ErrorAction SilentlyContinue
-                 foreach ($l1 in $level1) {
-                     $level2 = Get-ChildItem -Path $l1.FullName -Directory -ErrorAction SilentlyContinue
-                     foreach ($l2 in $level2) {
-                         $level3 = Get-ChildItem -Path $l2.FullName -Directory -ErrorAction SilentlyContinue
-                         foreach ($folder in $level3) {
-                             $folderInfo = [PSCustomObject]@{
-                                  FolderName    = $folder.Name
-                                  UNCPath       = $folder.FullName
-                                  "File Count"  = $null
-                                  "Folder Size" = $null
-                             }
-                             $folderInfoList += $folderInfo
-                         }
+                 # Limit to 3 levels deep relative to $homePath
+                 $baseHome = $homePath.TrimEnd('\')
+                 $baseCount = ($baseHome -split '\\').Count
+                 $folders = Get-ChildItem -Path $homePath -Directory -Recurse -ErrorAction SilentlyContinue |
+                   Where-Object { (($_.FullName.TrimEnd('\') -split '\\').Count - $baseCount) -le 3 }
+                 foreach ($folder in $folders) {
+                     $folderInfo = [PSCustomObject]@{
+                         FolderName    = $folder.Name
+                         UNCPath       = $folder.FullName
+                         "File Count"  = $null
+                         "Folder Size" = $null
                      }
+                     $folderInfoList += $folderInfo
                  }
              }
          }
     }
     else {
-         # If no known-homes are defined, scan three levels down from base.
-         $level1 = Get-ChildItem -Path $baseDir -Directory -ErrorAction SilentlyContinue
-         foreach ($l1 in $level1) {
-             $level2 = Get-ChildItem -Path $l1.FullName -Directory -ErrorAction SilentlyContinue
-             foreach ($l2 in $level2) {
-                 $level3 = Get-ChildItem -Path $l2.FullName -Directory -ErrorAction SilentlyContinue
-                 foreach ($folder in $level3) {
-                     $folderInfo = [PSCustomObject]@{
-                          FolderName    = $folder.Name
-                          UNCPath       = $folder.FullName
-                          "File Count"  = $null
-                          "Folder Size" = $null
-                     }
-                     $folderInfoList += $folderInfo
-                 }
+         # Limit to 3 levels deep relative to base directory
+         $basePath = $textBoxDir.Text.TrimEnd('\')
+         $baseCount = ($basePath -split '\\').Count
+         $folders = Get-ChildItem -Path $basePath -Directory -Recurse -ErrorAction SilentlyContinue |
+           Where-Object { (($_.FullName.TrimEnd('\') -split '\\').Count - $baseCount) -le 3 }
+         foreach ($folder in $folders) {
+             $folderInfo = [PSCustomObject]@{
+                 FolderName    = $folder.Name
+                 UNCPath       = $folder.FullName
+                 "File Count"  = $null
+                 "Folder Size" = $null
              }
+             $folderInfoList += $folderInfo
          }
     }
     
@@ -333,7 +323,9 @@ $buttonRun.Add_Click({
               $matchesForUser = @()
               foreach ($folder in $folderInfoList) {
                    if (IsMatch $folder.FolderName $nameParts) {
-                        $relativePath = $folder.UNCPath.Substring($baseDir.Length)
+                        $basePath = $textBoxDir.Text.Trim()
+                        if (-not $basePath.EndsWith("\")) { $basePath += "\" }
+                        $relativePath = $folder.UNCPath.Substring($basePath.Length)
                         if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
                         $siteCode = ($global:selectedSite.'Site-Code').Trim()
                         $newSource = $pathtranslation + $siteCode + "\" + $relativePath
@@ -364,7 +356,9 @@ $buttonRun.Add_Click({
                         }
                    }
                    if ($bestScore -ge $fuzzyThreshold -and $bestMatch -ne $null) {
-                        $relativePath = $bestMatch.UNCPath.Substring($baseDir.Length)
+                        $basePath = $textBoxDir.Text.Trim()
+                        if (-not $basePath.EndsWith("\")) { $basePath += "\" }
+                        $relativePath = $bestMatch.UNCPath.Substring($basePath.Length)
                         if ($relativePath.StartsWith("\")) { $relativePath = $relativePath.Substring(1) }
                         $siteCode = ($global:selectedSite.'Site-Code').Trim()
                         $newSource = $pathtranslation + $siteCode + "\" + $relativePath

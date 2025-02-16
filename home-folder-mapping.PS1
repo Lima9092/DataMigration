@@ -122,7 +122,7 @@ function IsMatch {
 }
 
 # --- New Helper Function: Get Directories Up To a Specified Depth ---
-# This function returns only the subdirectories at levels 1 and 2 (if maxDepth is set to 2)
+# This function returns subdirectories up to a given maxDepth (levels 1 and 2 in our case).
 function Get-DirectoriesUpToDepth {
     param(
        [string]$Path,
@@ -262,6 +262,36 @@ $dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows
 $form.Controls.Add($dataGrid)
 
 $global:results = @()
+
+# --- Context Menu: Right-Click "Copy as CSV" ---
+$contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+$menuItemCopyAsCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
+$contextMenu.Items.Add($menuItemCopyAsCSV)
+$dataGrid.ContextMenuStrip = $contextMenu
+
+$menuItemCopyAsCSV.add_Click({
+    $selectedRows = $dataGrid.SelectedRows
+    if ($selectedRows.Count -eq 0) { return }
+    # Build CSV text: include headers
+    $headers = $dataGrid.Columns | ForEach-Object { $_.HeaderText }
+    $csvContent = @()
+    $csvContent += [string]::Join(",", $headers)
+    foreach ($row in $selectedRows) {
+        $values = @()
+        foreach ($col in $dataGrid.Columns) {
+            $cellValue = $row.Cells[$col.Index].Value
+            if ($cellValue -eq $null) { $cellValue = "" }
+            $escapedValue = $cellValue.ToString().Replace('"','""')
+            if ($escapedValue.Contains(",") -or $escapedValue.Contains('"') -or $escapedValue.Contains("`n")) {
+                $escapedValue = '"' + $escapedValue + '"'
+            }
+            $values += $escapedValue
+        }
+        $csvContent += [string]::Join(",", $values)
+    }
+    $csvText = $csvContent -join "`r`n"
+    [System.Windows.Forms.Clipboard]::SetText($csvText)
+})
 
 # --- Event Handlers ---
 $buttonBrowseCSV.Add_Click({
@@ -471,12 +501,12 @@ $buttonSave.Add_Click({
     }
 })
 
-# Highlight duplicate rows if file count/folder size options are enabled.
+# --- Highlight Rows with Errors ---
 $dataGrid.add_RowPrePaint({
     param($sender, $e)
     $row = $sender.Rows[$e.RowIndex]
-    if ($row.Cells["Errors"].Value -and $row.Cells["Errors"].Value.ToString().Contains("Duplicate") -and ($checkBoxFileCount.Checked -or $checkBoxFolderSize.Checked)) {
-        $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::LightYellow
+    if ($row.Cells["Errors"].Value -and $row.Cells["Errors"].Value.ToString().Trim() -ne "") {
+         $row.DefaultCellStyle.BackColor = [System.Drawing.Color]::LightPink
     }
 })
 

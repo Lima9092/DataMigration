@@ -11,6 +11,20 @@ $DataStandardsCSV = "Data-Standards.csv"
 $SiteMetadataCSV  = "Site-Metadata.csv"
 
 # ------------------------------
+# Minimize the Console Window
+# ------------------------------
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+$consoleHandle = (Get-Process -Id $pid).MainWindowHandle
+[Win32]::ShowWindow($consoleHandle, 2)  # 2 minimizes the window
+
+# ------------------------------
 # Load required .NET assemblies
 # ------------------------------
 Add-Type -AssemblyName System.Windows.Forms
@@ -87,6 +101,11 @@ $grid.Anchor = 'Top,Bottom,Left,Right'
 $grid.AutoSizeColumnsMode = "Fill"
 $grid.ReadOnly = $true
 $grid.AllowUserToAddRows = $false
+
+# Set selection mode to full row select and allow multi-select.
+$grid.SelectionMode = [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+$grid.MultiSelect = $true
+
 $form.Controls.Add($grid)
 
 # ------------------------------
@@ -185,7 +204,7 @@ $btnRun.Add_Click({
         return
     }
 
-    # Require both Legacy-Root and Legacy-Share
+    # Require both Legacy-Root and Legacy-Share.
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
     if ([string]::IsNullOrEmpty($legacyRoot)) {
@@ -209,7 +228,7 @@ $btnRun.Add_Click({
         return
     }
 
-    # List directories directly in the share folder.
+    # List directories directly in the share folder
     try {
         $subDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction Stop
     }

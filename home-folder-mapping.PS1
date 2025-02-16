@@ -121,11 +121,12 @@ function IsMatch {
     return $false
 }
 
-# --- New Helper Function: Get Directories Up To a Given Depth ---
+# --- New Helper Function: Get Directories Up To a Specified Depth ---
+# This function returns only the subdirectories at levels 1 and 2 (if maxDepth is set to 2)
 function Get-DirectoriesUpToDepth {
     param(
        [string]$Path,
-       [int]$maxDepth = 3,
+       [int]$maxDepth = 2,
        [int]$currentLevel = 1
     )
     if ($currentLevel -gt $maxDepth) { return @() }
@@ -287,14 +288,15 @@ $buttonRun.Add_Click({
     catch { return }
     if (-not (Test-Path $textBoxDir.Text)) { return }
     
-    # Build folder list without using full recursion.
+    # Build folder list.
     $folderInfoList = @()
     if ($global:knownHomes -and $global:knownHomes.Trim() -ne "") {
+         # Use each known-home folder as the base and search only 1–2 levels deep.
          $knownHomesList = $global:knownHomes.Split(";") | ForEach-Object { $_.Trim() }
          foreach ($homeFolder in $knownHomesList) {
              $homePath = Join-Path $textBoxDir.Text $homeFolder
              if (Test-Path $homePath) {
-                 $folders = Get-DirectoriesUpToDepth -Path $homePath -maxDepth 3
+                 $folders = Get-DirectoriesUpToDepth -Path $homePath -maxDepth 2
                  foreach ($folder in $folders) {
                      $folderInfoList += [PSCustomObject]@{
                          FolderName    = $folder.Name
@@ -307,8 +309,10 @@ $buttonRun.Add_Click({
          }
     }
     else {
+         # If no known-home is defined, use the base directory and search deeper if needed.
          $basePath = $textBoxDir.Text
          if (Test-Path $basePath) {
+             # Here you could adjust the depth if desired (using maxDepth 3, for example)
              $folders = Get-DirectoriesUpToDepth -Path $basePath -maxDepth 3
              foreach ($folder in $folders) {
                  $folderInfoList += [PSCustomObject]@{

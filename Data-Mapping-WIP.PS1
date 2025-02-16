@@ -22,13 +22,15 @@ function Load-CSVFile($filePath) {
         return Import-Csv -Path $filePath
     }
     catch {
-        [System.Windows.Forms.MessageBox]::Show("Failed to load CSV: $filePath", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Failed to load CSV: $filePath", "Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return $null
     }
 }
 
 # Function to replace tokens in a template string using the global variables and the selected site
 function ReplaceTokens($template, $siteMetadata) {
+    if (-not $template) { return "" }
     $result = $template
     $result = $result.Replace("<storageAccount>", $GlobalStorageAccount)
     $result = $result.Replace("<studentcontainer>", $GlobalStudentContainer)
@@ -115,7 +117,8 @@ if (Test-Path $SiteMetadataCSV) {
     }
 }
 else {
-    [System.Windows.Forms.MessageBox]::Show("Site Metadata CSV not found at: $SiteMetadataCSV", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+    [System.Windows.Forms.MessageBox]::Show("Site Metadata CSV not found at: $SiteMetadataCSV", "Error",
+        [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 }
 
 # --- Setup the Data Grid Columns ---
@@ -132,7 +135,8 @@ $btnRun.Add_Click({
     $sites = Load-CSVFile $SiteMetadataCSV
 
     if (-not $dataStandards -or -not $sites) {
-        [System.Windows.Forms.MessageBox]::Show("One or more CSV files could not be loaded.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("One or more CSV files could not be loaded.", "Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -140,7 +144,8 @@ $btnRun.Add_Click({
     $selectedSiteName = $cmbSite.SelectedItem
     $selectedSite = $sites | Where-Object { $_.'Site-Name' -eq $selectedSiteName } | Select-Object -First 1
     if (-not $selectedSite) {
-        [System.Windows.Forms.MessageBox]::Show("Selected site not found in Site Metadata.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Selected site not found in Site Metadata.", "Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -148,11 +153,13 @@ $btnRun.Add_Click({
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
     if ([string]::IsNullOrEmpty($legacyRoot)) {
-        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Root for site $selectedSiteName", "Meta Data Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Root for site $selectedSiteName", "Meta Data Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
     if ([string]::IsNullOrEmpty($legacyShare)) {
-        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -162,7 +169,8 @@ $btnRun.Add_Click({
     $basePath = Join-Path $legacyRootTrim $legacyShareTrim
 
     if (-not (Test-Path $basePath)) {
-        [System.Windows.Forms.MessageBox]::Show("Legacy base path $basePath does not exist.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Legacy base path $basePath does not exist.", "Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -171,7 +179,8 @@ $btnRun.Add_Click({
         $firstLevelDirs = Get-ChildItem -Path $basePath -Directory
     }
     catch {
-        [System.Windows.Forms.MessageBox]::Show("Failed to list directories in $basePath.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        [System.Windows.Forms.MessageBox]::Show("Failed to list directories in $basePath.", "Error",
+            [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
 
@@ -200,19 +209,14 @@ $btnRun.Add_Click({
 
                     # Replace tokens in the Data Type field
                     $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
-                    if ($dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
+                    if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
                         $name = "$dataTypeReplaced Data"
                     }
                     else {
                         $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
                     }
                     $siteID = $selectedSite.'Site-Code'
-                    $rowIndex = $grid.Rows.Add()
-                    $row = $grid.Rows[$rowIndex]
-                    $row.Cells["SiteID"].Value = $siteID
-                    $row.Cells["Name"].Value = $name
-                    $row.Cells["Source"].Value = $sourcePath
-                    $row.Cells["Destination"].Value = $destination
+                    $grid.Rows.Add($siteID, $name, $sourcePath, $destination) | Out-Null
                 }
             }
             else {
@@ -226,34 +230,6 @@ $btnRun.Add_Click({
                 $row.Cells["Destination"].Value = "Non standard share found"
                 $row.Cells["Destination"].Style.ForeColor = [System.Drawing.Color]::Red
             }
-        }
-    }
-})
-
-# --- Save CSV Button Event (retained from baseline) ---
-$btnSave.Add_Click({
-    $saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-    $saveFileDialog.Filter = "CSV Files|*.csv|All Files|*.*"
-    $saveFileDialog.FileName = "Data-Migration-Output.csv"
-    if ($saveFileDialog.ShowDialog() -eq "OK") {
-        $output = @()
-        foreach ($row in $grid.Rows) {
-            if (-not $row.IsNewRow) {
-                $obj = [PSCustomObject]@{
-                    'Site ID'     = $row.Cells["SiteID"].Value
-                    'Name'        = $row.Cells["Name"].Value
-                    'Source'      = $row.Cells["Source"].Value
-                    'Destination' = $row.Cells["Destination"].Value
-                }
-                $output += $obj
-            }
-        }
-        try {
-            $output | Export-Csv -Path $saveFileDialog.FileName -NoTypeInformation
-            [System.Windows.Forms.MessageBox]::Show("CSV saved successfully to $($saveFileDialog.FileName)", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
-        }
-        catch {
-            [System.Windows.Forms.MessageBox]::Show("Failed to save CSV.", "Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         }
     }
 })

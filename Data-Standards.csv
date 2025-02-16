@@ -1,0 +1,5 @@
+Source-Path,Destination-Path,Data Type
+\home\student,https://<storageAccount>.blob.core.windows.net/<studentcontainer>/<sitecode>,Student Personal
+\home\staff,https://<storageAccount>.file.core.windows.net/<staffpersonalshare>,<sitename> Staff Personal
+\share\students,https://<storageAccount>.file.core.windows.net/<sitecode>-studentshare,<sitename> Student Shared
+\share\staff,https://<storageAccount>.file.core.windows.net/<sitecode>-teachershare,<sitename> Staff Shared

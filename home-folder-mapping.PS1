@@ -121,6 +121,23 @@ function IsMatch {
     return $false
 }
 
+# --- New Helper Function: Get Directories Up To a Given Depth ---
+function Get-DirectoriesUpToDepth {
+    param(
+       [string]$Path,
+       [int]$maxDepth = 3,
+       [int]$currentLevel = 1
+    )
+    if ($currentLevel -gt $maxDepth) { return @() }
+    $dirs = Get-ChildItem -Path $Path -Directory -ErrorAction SilentlyContinue
+    $result = @()
+    foreach ($dir in $dirs) {
+         $result += $dir
+         $result += Get-DirectoriesUpToDepth -Path $dir.FullName -maxDepth $maxDepth -currentLevel ($currentLevel + 1)
+    }
+    return $result
+}
+
 # --- Build the GUI ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Home Drive Mapping"
@@ -270,44 +287,37 @@ $buttonRun.Add_Click({
     catch { return }
     if (-not (Test-Path $textBoxDir.Text)) { return }
     
-    # Build folder list without expensive file counting
+    # Build folder list without using full recursion.
     $folderInfoList = @()
     if ($global:knownHomes -and $global:knownHomes.Trim() -ne "") {
          $knownHomesList = $global:knownHomes.Split(";") | ForEach-Object { $_.Trim() }
          foreach ($homeFolder in $knownHomesList) {
              $homePath = Join-Path $textBoxDir.Text $homeFolder
              if (Test-Path $homePath) {
-                 # Limit to 3 levels deep relative to $homePath
-                 $baseHome = $homePath.TrimEnd('\')
-                 $baseCount = ($baseHome -split '\\').Count
-                 $folders = Get-ChildItem -Path $homePath -Directory -Recurse -ErrorAction SilentlyContinue |
-                   Where-Object { (($_.FullName.TrimEnd('\') -split '\\').Count - $baseCount) -le 3 }
+                 $folders = Get-DirectoriesUpToDepth -Path $homePath -maxDepth 3
                  foreach ($folder in $folders) {
-                     $folderInfo = [PSCustomObject]@{
+                     $folderInfoList += [PSCustomObject]@{
                          FolderName    = $folder.Name
                          UNCPath       = $folder.FullName
                          "File Count"  = $null
                          "Folder Size" = $null
                      }
-                     $folderInfoList += $folderInfo
                  }
              }
          }
     }
     else {
-         # Limit to 3 levels deep relative to base directory
-         $basePath = $textBoxDir.Text.TrimEnd('\')
-         $baseCount = ($basePath -split '\\').Count
-         $folders = Get-ChildItem -Path $basePath -Directory -Recurse -ErrorAction SilentlyContinue |
-           Where-Object { (($_.FullName.TrimEnd('\') -split '\\').Count - $baseCount) -le 3 }
-         foreach ($folder in $folders) {
-             $folderInfo = [PSCustomObject]@{
-                 FolderName    = $folder.Name
-                 UNCPath       = $folder.FullName
-                 "File Count"  = $null
-                 "Folder Size" = $null
+         $basePath = $textBoxDir.Text
+         if (Test-Path $basePath) {
+             $folders = Get-DirectoriesUpToDepth -Path $basePath -maxDepth 3
+             foreach ($folder in $folders) {
+                 $folderInfoList += [PSCustomObject]@{
+                     FolderName    = $folder.Name
+                     UNCPath       = $folder.FullName
+                     "File Count"  = $null
+                     "Folder Size" = $null
+                 }
              }
-             $folderInfoList += $folderInfo
          }
     }
     

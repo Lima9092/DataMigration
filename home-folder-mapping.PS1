@@ -6,6 +6,7 @@ $fuzzyThreshold = 0.25
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# --- Functions ---
 function Get-LevenshteinDistance {
     param (
         [string]$s,
@@ -45,7 +46,6 @@ function Get-Similarity {
     return (1 - ($distance / $maxLen))
 }
 
-# --- Helper Functions for Pattern Matching ---
 function Import-UserCsv {
     param (
         [string]$Path
@@ -66,7 +66,6 @@ function Remove-TrailingNumbers {
     return ($text.Trim() -replace "\d+$", "")
 }
 
-# This function splits the username and returns name parts
 function Extract-NameParts {
     param (
         [string]$fullName
@@ -95,7 +94,6 @@ function Extract-NameParts {
     }
 }
 
-# Normalizes folder names (removes spaces) and checks against expected name parts.
 function IsMatch {
     param (
         [string]$folderName,
@@ -121,8 +119,6 @@ function IsMatch {
     return $false
 }
 
-# --- New Helper Function: Get Directories Up To a Specified Depth ---
-# This function returns subdirectories up to a given maxDepth (levels 1 and 2 in our case).
 function Get-DirectoriesUpToDepth {
     param(
        [string]$Path,
@@ -163,7 +159,6 @@ $global:siteMetadata = @()
 $global:selectedSite = $null
 $global:knownHomes = ""
 
-# Load site-metadata.csv from the script's root folder.
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $metadataPath = Join-Path $scriptDir "site-metadata.csv"
 if (Test-Path $metadataPath) {
@@ -173,10 +168,9 @@ if (Test-Path $metadataPath) {
     }
 }
 else {
-    [System.Windows.Forms.MessageBox]::Show("site-metadata.csv not found in $scriptDir","Error","OK","Error")
+    [System.Windows.Forms.MessageBox]::Show("site-metadata.csv not found in $scriptDir", "Error", "OK", "Error")
 }
 
-# When a site is selected, prepopulate the directory textbox and store the selected site info.
 $comboBoxSite.Add_SelectedIndexChanged({
     $selectedSiteName = $comboBoxSite.SelectedItem
     $matchSite = $global:siteMetadata | Where-Object { $_."Site-Name" -eq $selectedSiteName }
@@ -191,7 +185,7 @@ $comboBoxSite.Add_SelectedIndexChanged({
     }
 })
 
-# --- CSV file selection ---
+# --- CSV File Selection ---
 $labelCSV = New-Object System.Windows.Forms.Label
 $labelCSV.Location = New-Object System.Drawing.Point(10,60)
 $labelCSV.Size = New-Object System.Drawing.Size(120,20)
@@ -209,7 +203,7 @@ $buttonBrowseCSV.Size = New-Object System.Drawing.Size(100,24)
 $buttonBrowseCSV.Text = "Browse CSV"
 $form.Controls.Add($buttonBrowseCSV)
 
-# --- Directory selection ---
+# --- Directory Selection ---
 $labelDir = New-Object System.Windows.Forms.Label
 $labelDir.Location = New-Object System.Drawing.Point(10,100)
 $labelDir.Size = New-Object System.Drawing.Size(120,20)
@@ -227,7 +221,7 @@ $buttonBrowseDir.Size = New-Object System.Drawing.Size(100,24)
 $buttonBrowseDir.Text = "Browse Dir"
 $form.Controls.Add($buttonBrowseDir)
 
-# --- Checkboxes for extra data ---
+# --- Checkboxes ---
 $checkBoxFileCount = New-Object System.Windows.Forms.CheckBox
 $checkBoxFileCount.Location = New-Object System.Drawing.Point(140,140)
 $checkBoxFileCount.Size = New-Object System.Drawing.Size(150,20)
@@ -240,7 +234,7 @@ $checkBoxFolderSize.Size = New-Object System.Drawing.Size(150,20)
 $checkBoxFolderSize.Text = "Include Folder Size"
 $form.Controls.Add($checkBoxFolderSize)
 
-# --- Run and Save buttons ---
+# --- Run and Save Buttons ---
 $buttonRun = New-Object System.Windows.Forms.Button
 $buttonRun.Location = New-Object System.Drawing.Point(10,180)
 $buttonRun.Size = New-Object System.Drawing.Size(100,30)
@@ -253,24 +247,22 @@ $buttonSave.Size = New-Object System.Drawing.Size(100,30)
 $buttonSave.Text = "Save CSV"
 $form.Controls.Add($buttonSave)
 
-# --- DataGridView for results ---
+# --- DataGridView ---
 $dataGrid = New-Object System.Windows.Forms.DataGridView
 $dataGrid.Location = New-Object System.Drawing.Point(10,220)
 $dataGrid.Size = New-Object System.Drawing.Size(760,380)
 $dataGrid.AutoSizeColumnsMode = "Fill"
 $dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
-# Allow full row selection and multi-select
 $dataGrid.SelectionMode = "FullRowSelect"
 $dataGrid.MultiSelect = $true
 $form.Controls.Add($dataGrid)
 
-# --- Right-click: ensure row is selected (without clearing multiple selections) ---
+# --- Right-click selection behavior ---
 $dataGrid.add_MouseDown({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
         $hitTestInfo = $dataGrid.HitTest($e.X, $e.Y)
         if ($hitTestInfo.RowIndex -ge 0) {
-            # Only select the row if it isn't already selected.
             if (-not $dataGrid.Rows[$hitTestInfo.RowIndex].Selected) {
                 $dataGrid.ClearSelection()
                 $dataGrid.Rows[$hitTestInfo.RowIndex].Selected = $true
@@ -281,16 +273,18 @@ $dataGrid.add_MouseDown({
 
 $global:results = @()
 
-# --- Context Menu: Right-Click "Copy as CSV" ---
+# --- Context Menu for Copy ---
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 $menuItemCopyAsCSV = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as CSV")
+$menuItemCopyAsExcel = New-Object System.Windows.Forms.ToolStripMenuItem("Copy as Excel")
 $contextMenu.Items.Add($menuItemCopyAsCSV)
+$contextMenu.Items.Add($menuItemCopyAsExcel)
 $dataGrid.ContextMenuStrip = $contextMenu
 
 $menuItemCopyAsCSV.add_Click({
-    $selectedRows = $dataGrid.SelectedRows
+    $selectedRows = @($dataGrid.SelectedRows) | Sort-Object { $_.Index }
     if ($selectedRows.Count -eq 0) { return }
-    # Build CSV text: include headers
+    # Build CSV text with headers.
     $headers = $dataGrid.Columns | ForEach-Object { $_.HeaderText }
     $csvContent = @()
     $csvContent += [string]::Join(",", $headers)
@@ -311,7 +305,25 @@ $menuItemCopyAsCSV.add_Click({
     [System.Windows.Forms.Clipboard]::SetText($csvText)
 })
 
-# --- Event Handlers ---
+$menuItemCopyAsExcel.add_Click({
+    $selectedRows = @($dataGrid.SelectedRows) | Sort-Object { $_.Index }
+    if ($selectedRows.Count -eq 0) { return }
+    # Build tab-delimited text WITHOUT headers.
+    $excelContent = @()
+    foreach ($row in $selectedRows) {
+        $values = @()
+        foreach ($col in $dataGrid.Columns) {
+            $cellValue = $row.Cells[$col.Index].Value
+            if ($cellValue -eq $null) { $cellValue = "" }
+            $values += $cellValue.ToString()
+        }
+        $excelContent += [string]::Join("`t", $values)
+    }
+    $excelText = $excelContent -join "`r`n"
+    [System.Windows.Forms.Clipboard]::SetText($excelText)
+})
+
+# --- Event Handlers for Browse Buttons ---
 $buttonBrowseCSV.Add_Click({
     $openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
     $openFileDialog.Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
@@ -327,6 +339,7 @@ $buttonBrowseDir.Add_Click({
     }
 })
 
+# --- Run Button ---
 $buttonRun.Add_Click({
     $global:results = @()
     if (-not (Test-Path $textBoxCSV.Text)) { return }
@@ -339,7 +352,6 @@ $buttonRun.Add_Click({
     # Build folder list.
     $folderInfoList = @()
     if ($global:knownHomes -and $global:knownHomes.Trim() -ne "") {
-         # Use each known-home folder as the base and search only 1–2 levels deep.
          $knownHomesList = $global:knownHomes.Split(";") | ForEach-Object { $_.Trim() }
          foreach ($homeFolder in $knownHomesList) {
              $homePath = Join-Path $textBoxDir.Text $homeFolder
@@ -357,10 +369,8 @@ $buttonRun.Add_Click({
          }
     }
     else {
-         # If no known-home is defined, use the base directory and search deeper if needed.
          $basePath = $textBoxDir.Text
          if (Test-Path $basePath) {
-             # Here you could adjust the depth if desired (using maxDepth 3, for example)
              $folders = Get-DirectoriesUpToDepth -Path $basePath -maxDepth 3
              foreach ($folder in $folders) {
                  $folderInfoList += [PSCustomObject]@{
@@ -381,7 +391,6 @@ $buttonRun.Add_Click({
               $localPart = Remove-TrailingNumbers $localPart
               $nameParts = Extract-NameParts $localPart
               
-              # Attempt exact pattern matching.
               $matchesForUser = @()
               foreach ($folder in $folderInfoList) {
                    if (IsMatch $folder.FolderName $nameParts) {
@@ -404,7 +413,6 @@ $buttonRun.Add_Click({
                    }
               }
               
-              # If no exact match was found, try fuzzy matching.
               if ($matchesForUser.Count -eq 0) {
                    $bestMatch = $null
                    $bestScore = 0
@@ -458,7 +466,6 @@ $buttonRun.Add_Click({
          }
     }
     
-    # Now, only compute file count and folder size for duplicates.
     foreach ($result in $global:results) {
          if ($result.Errors -and $result.Errors -like "*Duplicate*") {
               if ($checkBoxFileCount.Checked -and $result.UNCPath) {
@@ -483,8 +490,9 @@ $buttonRun.Add_Click({
          }
     }
     
-    # Build a DataTable for display.
+    # --- Build DataTable with "Site" column as the first column ---
     $dt = New-Object System.Data.DataTable
+    $dt.Columns.Add("Site") | Out-Null
     $dt.Columns.Add("Email") | Out-Null
     $dt.Columns.Add("Source") | Out-Null
     $dt.Columns.Add("OneDrive") | Out-Null
@@ -494,6 +502,7 @@ $buttonRun.Add_Click({
     
     foreach ($item in $global:results) {
          $row = $dt.NewRow()
+         $row["Site"] = $global:selectedSite."Site-Name"
          $row["Email"] = $item.Email
          $row["Source"] = $item.Source
          $row["OneDrive"] = $item.OneDrive
@@ -503,8 +512,8 @@ $buttonRun.Add_Click({
          $dt.Rows.Add($row)
     }
     
-    # Sort by Errors (descending so that non-empty errors appear at the top)
-    $dt.DefaultView.Sort = "Errors DESC"
+    # Sort by Errors in ascending order (so blank errors come first)
+    $dt.DefaultView.Sort = "Errors ASC"
     $dataGrid.DataSource = $dt.DefaultView
     $dataGrid.Refresh()
 })

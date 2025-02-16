@@ -259,7 +259,22 @@ $dataGrid.Location = New-Object System.Drawing.Point(10,220)
 $dataGrid.Size = New-Object System.Drawing.Size(760,380)
 $dataGrid.AutoSizeColumnsMode = "Fill"
 $dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
+# Set selection mode for right-click copying
+$dataGrid.SelectionMode = "FullRowSelect"
+$dataGrid.MultiSelect = $true
 $form.Controls.Add($dataGrid)
+
+# --- Right-click: ensure row is selected on right-click ---
+$dataGrid.add_MouseDown({
+    param($sender, $e)
+    if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+        $hitTestInfo = $dataGrid.HitTest($e.X, $e.Y)
+        if ($hitTestInfo.RowIndex -ge 0) {
+            $dataGrid.ClearSelection()
+            $dataGrid.Rows[$hitTestInfo.RowIndex].Selected = $true
+        }
+    }
+})
 
 $global:results = @()
 

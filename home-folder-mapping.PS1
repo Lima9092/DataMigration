@@ -259,19 +259,22 @@ $dataGrid.Location = New-Object System.Drawing.Point(10,220)
 $dataGrid.Size = New-Object System.Drawing.Size(760,380)
 $dataGrid.AutoSizeColumnsMode = "Fill"
 $dataGrid.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Bottom -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Right
-# Set selection mode for right-click copying
+# Allow full row selection and multi-select
 $dataGrid.SelectionMode = "FullRowSelect"
 $dataGrid.MultiSelect = $true
 $form.Controls.Add($dataGrid)
 
-# --- Right-click: ensure row is selected on right-click ---
+# --- Right-click: ensure row is selected (without clearing multiple selections) ---
 $dataGrid.add_MouseDown({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
         $hitTestInfo = $dataGrid.HitTest($e.X, $e.Y)
         if ($hitTestInfo.RowIndex -ge 0) {
-            $dataGrid.ClearSelection()
-            $dataGrid.Rows[$hitTestInfo.RowIndex].Selected = $true
+            # Only select the row if it isn't already selected.
+            if (-not $dataGrid.Rows[$hitTestInfo.RowIndex].Selected) {
+                $dataGrid.ClearSelection()
+                $dataGrid.Rows[$hitTestInfo.RowIndex].Selected = $true
+            }
         }
     }
 })
@@ -500,7 +503,9 @@ $buttonRun.Add_Click({
          $dt.Rows.Add($row)
     }
     
-    $dataGrid.DataSource = $dt
+    # Sort by Errors (descending so that non-empty errors appear at the top)
+    $dt.DefaultView.Sort = "Errors DESC"
+    $dataGrid.DataSource = $dt.DefaultView
     $dataGrid.Refresh()
 })
 

@@ -2,6 +2,20 @@
 $pathtranslation = "\\storageaccount.files.core.windows.net\staff-personal\"
 $fuzzyThreshold = 0.25
 
+# ------------------------------
+# Minimize the Console Window
+# ------------------------------
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+"@
+$consoleHandle = (Get-Process -Id $pid).MainWindowHandle
+[Win32]::ShowWindow($consoleHandle, 2)  # 2 minimizes the window
+
 # --- Add required .NET assemblies ---
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing

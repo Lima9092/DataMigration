@@ -60,7 +60,7 @@ function ReplaceTokens($template, $siteMetadata) {
 # Build the GUI
 # ------------------------------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Data Migration Tool"
+$form.Text = "Site Data Mapping Tool"
 $form.Size = New-Object System.Drawing.Size(800,600)
 $form.StartPosition = "CenterScreen"
 

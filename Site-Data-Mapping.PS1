@@ -101,9 +101,9 @@ $dt.Columns.Add("Destination")   | Out-Null
 $grid.DataSource = $dt.DefaultView
 
 # ------------------------------
-# (Optional) You can remove row highlighting since no Errors column exists.
+# Highlight rows with errors using your provided format (red text and red background)
+# For this example, we highlight rows where Destination equals "Access Denied"
 # ------------------------------
-# (If you still want highlighting for "Access Denied" rows, we could check if Destination equals "Access Denied".)
 $grid.add_RowPrePaint({
     param($sender, $e)
     $row = $sender.Rows[$e.RowIndex]
@@ -180,7 +180,7 @@ $btnRun.Add_Click({
         return
     }
 
-    # Check for required meta data; if Legacy-Share is missing, use Legacy-Root only.
+    # Require both Legacy-Root and Legacy-Share
     $legacyRoot = $selectedSite.'Legacy-Root'
     $legacyShare = $selectedSite.'Legacy-Share'
     if ([string]::IsNullOrEmpty($legacyRoot)) {
@@ -188,14 +188,15 @@ $btnRun.Add_Click({
              [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
         return
     }
-    $legacyRootTrim = $legacyRoot.TrimEnd("\")
     if ([string]::IsNullOrEmpty($legacyShare)) {
-         $basePath = $legacyRootTrim
+        [System.Windows.Forms.MessageBox]::Show("Missing Legacy-Share for site $selectedSiteName", "Meta Data Error", `
+             [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+        return
     }
-    else {
-         $legacyShareTrim = $legacyShare.TrimStart("\")
-         $basePath = Join-Path $legacyRootTrim $legacyShareTrim
-    }
+
+    $legacyRootTrim = $legacyRoot.TrimEnd("\")
+    $legacyShareTrim = $legacyShare.TrimStart("\")
+    $basePath = Join-Path $legacyRootTrim $legacyShareTrim
 
     if (-not (Test-Path $basePath)) {
         [System.Windows.Forms.MessageBox]::Show("Legacy base path $basePath does not exist.", "Error", `
@@ -203,8 +204,9 @@ $btnRun.Add_Click({
         return
     }
 
+    # List directories in the base path only (do not list subdirectories)
     try {
-        $firstLevelDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction Stop
+        $subDirs = Get-ChildItem -Path $basePath -Directory -ErrorAction Stop
     }
     catch {
         [System.Windows.Forms.MessageBox]::Show("Failed to list directories in $basePath.", "Error", `
@@ -212,59 +214,45 @@ $btnRun.Add_Click({
         return
     }
 
-    foreach ($dir in $firstLevelDirs) {
-        try {
-            $secondLevelDirs = Get-ChildItem -Path $dir.FullName -Directory -ErrorAction Stop
-        }
-        catch {
-            $dr = $dt.NewRow()
-            $dr["Site ID"] = $selectedSite.'Site-Code'
-            $dr["Name"] = "$($selectedSite.'Site-Name') Access Denied"
-            $dr["Source"] = $dir.FullName
-            $dr["Destination"] = "Access Denied"
-            $dt.Rows.Add($dr)
-            continue
-        }
-        foreach ($subDir in $secondLevelDirs) {
-            $sourcePath = $subDir.FullName
-            $relativePath = $sourcePath.Substring($basePath.Length)
-            if ($relativePath -notlike "\*") { $relativePath = "\" + $relativePath }
-            $relativePath = $relativePath.TrimEnd("\")
+    foreach ($subDir in $subDirs) {
+        $sourcePath = $subDir.FullName
+        # For one-level listing, the relative path is the folder name prefixed with a backslash
+        $relativePath = "\" + $subDir.Name
 
-            $match = $dataStandards | Where-Object { $_.'Source-Path'.Trim() -eq $relativePath }
-            if ($match) {
-                foreach ($m in $match) {
-                    $destTemplate = $m.'Destination-Path'
-                    $destination = ReplaceTokens $destTemplate $selectedSite
+        $match = $dataStandards | Where-Object { $_.'Source-Path'.Trim() -eq $relativePath }
+        if ($match) {
+            foreach ($m in $match) {
+                $destTemplate = $m.'Destination-Path'
+                $destination = ReplaceTokens $destTemplate $selectedSite
 
-                    $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
-                    if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
-                        $name = "$dataTypeReplaced Data"
-                    }
-                    else {
-                        $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
-                    }
-                    $siteID = $selectedSite.'Site-Code'
-                    $dr = $dt.NewRow()
-                    $dr["Site ID"] = $siteID
-                    $dr["Name"] = $name
-                    $dr["Source"] = $sourcePath
-                    $dr["Destination"] = $destination
-                    $dt.Rows.Add($dr)
+                $dataTypeReplaced = ReplaceTokens $m.'Data Type' $selectedSite
+                if ($dataTypeReplaced -and $dataTypeReplaced.StartsWith($selectedSite.'Site-Name')) {
+                    $name = "$dataTypeReplaced Data"
                 }
-            }
-            else {
+                else {
+                    $name = "$($selectedSite.'Site-Name') $dataTypeReplaced Data"
+                }
                 $siteID = $selectedSite.'Site-Code'
-                $name = "$($selectedSite.'Site-Name') Unknown Data"
                 $dr = $dt.NewRow()
                 $dr["Site ID"] = $siteID
                 $dr["Name"] = $name
                 $dr["Source"] = $sourcePath
-                $dr["Destination"] = "Non standard share found"
+                $dr["Destination"] = $destination
                 $dt.Rows.Add($dr)
             }
         }
+        else {
+            $siteID = $selectedSite.'Site-Code'
+            $name = "$($selectedSite.'Site-Name') Unknown Data"
+            $dr = $dt.NewRow()
+            $dr["Site ID"] = $siteID
+            $dr["Name"] = $name
+            $dr["Source"] = $sourcePath
+            $dr["Destination"] = "Non standard share found"
+            $dt.Rows.Add($dr)
+        }
     }
+    # Sort the DataTable by Destination (so that errors like "Access Denied" or "Non standard share found" come first if desired)
     $dt.DefaultView.Sort = "Destination ASC"
     $grid.DataSource = $dt.DefaultView
 })

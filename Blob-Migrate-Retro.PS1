@@ -21,7 +21,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 # Global variables
-$global:csvPath = ".\Retro.csv"       # CSV file path (ensure this file exists)
+$global:csvPath = ".\Blob-Migrations-Retro.csv"       # CSV file path (ensure this file exists)
 $global:masterSummaryPath = ".\Blob-Master-Summary.csv"  # Master summary CSV file path (if needed)
 $global:currentRunSummaries = @()
 $global:azCopyProcess = $null

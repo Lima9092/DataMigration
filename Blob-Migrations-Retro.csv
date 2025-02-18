@@ -1,0 +1,2 @@
+Site ID, StorageAccount, AzureContainer, ActiveContainer, SAS Token
+ABC, account, container/ABC, container/Active, SASToken
